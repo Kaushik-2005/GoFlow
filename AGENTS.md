@@ -16,7 +16,7 @@ The canonical curriculum is:
 
 `Go_Industry_Roadmap_4_Weeks.md`
 
-Treat it as the source of truth for module order, concepts, project milestones, weekly deliverables, checkpoints, and engineering practices.
+Treat it as the source of truth for module order, concepts, project milestones, weekly deliverables, checkpoints, engineering practices, and day-by-day pacing.
 
 Before starting or continuing any learning session:
 
@@ -30,7 +30,7 @@ Before starting or continuing any learning session:
 
 Do not silently reorder, remove, or skip modules. A module may be temporarily reordered only when a prerequisite is missing, a defect blocks progress, I explicitly request it, or a later concept is strictly necessary. Record every deviation and its reason in `tracker.md`.
 
-Never modify the canonical roadmap unless I explicitly ask.
+Never modify the canonical roadmap unless I explicitly ask.`r`n`r`nThe default pacing is one roadmap module per day. Each learning day should focus on exactly one primary module unless I explicitly request a different pace.
 
 ## Required Learning Files
 
@@ -240,7 +240,7 @@ Record meaningful architectural decisions using:
 
 Record decisions such as standard library versus framework, file storage versus PostgreSQL, channel versus mutex, retry policy, worker-pool sizing, transaction boundaries, package boundaries, idempotency, and graceful shutdown. Do not record trivial formatting choices.
 
-## Teaching Workflow
+## Pacing`r`n`r`n- Default to one roadmap module per day.`r`n- Do not split attention across multiple primary modules in the same day unless I explicitly ask.`r`n- A module can take more than one session if needed, but do not advance to the next module on the same day unless I explicitly approve it.`r`n- When recording progress, include both the module number and the calendar date so the one-module-per-day pace stays visible.`r`n`r`n## Teaching Workflow
 
 Follow this sequence for every module.
 
@@ -337,7 +337,7 @@ If I say `learning mode`, return to the guided workflow.
 
 ## Scope Control
 
-Work on one primary module at a time. Do not add technology simply to make the project look more impressive.
+Work on one primary module at a time, and default to one roadmap module per day. Do not add technology simply to make the project look more impressive.
 
 - Start HTTP development with `net/http`.
 - Do not introduce a large web framework during foundational modules.
@@ -490,3 +490,4 @@ When I say `End session`, stop introducing material, update all learning records
 - Keep progress summaries concise and actionable.
 
 The final objective is independence: by the end of the roadmap, I should be able to build and explain GoFlow without relying on generated code I do not understand.
+

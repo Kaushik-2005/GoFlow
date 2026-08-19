@@ -5,6 +5,52 @@ import (
 	"os"
 )
 
+func maxPriority(priorities []int) int {
+	max := priorities[0]
+
+	for _, priority := range priorities {
+		if priority > max {
+			max = priority
+		}
+	}
+
+	return max
+}
+
+func countByStatus(statuses []string) map[string]int {
+	counts := make(map[string]int)
+
+	for _, status := range statuses {
+		counts[status]++
+	}
+
+	return counts
+}
+
+func isValidJobName(name string) bool {
+	if len(name) < 3 {
+		return false
+	}
+
+	return true
+}
+
+func retryDelay(attempt int) int {
+	return 1 << attempt
+}
+
+func filterCompleted(statuses []string) []string {
+	completed := []string{}
+
+	for _, status := range statuses {
+		if status == "completed" {
+			completed = append(completed, status)
+		}
+	}
+
+	return completed
+}
+
 func requireArg(args []string, index int, message string) (string, bool) {
 	if len(args) <= index {
 		fmt.Println(message)

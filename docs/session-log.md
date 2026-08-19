@@ -65,3 +65,59 @@
 ### Next session
 
 - Start Module 1.2 with variables, zero values, and short declaration using `:=`
+
+## 2026-08-19 — Module 1.2 completion
+
+### Topics covered
+
+- Variables, constants, and zero values
+- `:=` versus `=`
+- Explicit type conversion
+- `if`, `switch`, `for`, and `range`
+- Functions, multiple return values, and `defer`
+- Scope, shadowing, and `iota`
+- Practice exercises on loops, maps, filtering, and retry calculation
+
+### Work completed
+
+- Resumed from the exact Module 1.2 tracker position
+- Taught and checked the main language-fundamentals concepts in sequence
+- Completed the practice exercises for `maxPriority`, `countByStatus`, `isValidJobName`, `retryDelay`, and `filterCompleted`
+- Added the exercise functions into `cmd/goflow/main.go`
+- Ran validation commands and confirmed the package still builds and vets cleanly
+- Updated learning records to mark Module 1.2 complete and set Module 1.3 as the next resume point
+
+### Commands run
+
+- `Get-Content -LiteralPath 'Go_Industry_Roadmap_4_Weeks.md'`
+- `Get-Content -LiteralPath 'docs/tracker.md'`
+- `Get-Content -LiteralPath 'docs/learning.md'`
+- `Get-Content -LiteralPath 'docs/session-log.md'`
+- `Get-Content -LiteralPath 'cmd/goflow/main.go'`
+- `gofmt -w ./cmd/goflow/main.go`
+- `go run ./cmd/goflow`
+- `go vet ./...`
+- `go test ./...`
+
+### Problems encountered
+
+- The local sandbox helper continued to fail for patch-based edits, so file updates were written directly outside the sandbox
+- `go run ./cmd/goflow` timed out once unexpectedly during validation, then succeeded on rerun with the expected help output
+
+### What I understood well
+
+- Zero values for `int`, `string`, and `bool`
+- The meaning of `:=` versus `=`
+- Why Go conditions require real boolean expressions
+- Why `_` is used in `range` loops to avoid unused variable errors
+- The basic purpose of `defer` and why it is written near resource acquisition
+- How map zero values make counting patterns concise
+
+### What needs revision
+
+- Use more precise wording when explaining `defer` and the exact meaning of short variable declaration
+- Add automated tests for the language-fundamentals helper functions once the roadmap reaches testing in more depth
+
+### Next session
+
+- Start Module 1.3 with arrays versus slices, slice length/capacity, and `append`

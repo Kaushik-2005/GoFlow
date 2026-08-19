@@ -5,12 +5,44 @@
 Learn Go by building a production-style backend rather than completing disconnected syntax exercises.
 
 - **Duration:** 4 weeks
-- **Schedule:** 6 days per week
+- **Schedule:** 6 days per week, one primary module per day
 - **Time:** 2–3 hours per day
 - **Recommended split:** 25% study, 60% building, 15% testing and revision
 - **Current stable release when this roadmap was prepared (17 August 2026):** Go 1.26.6
 
-Install Go from the [official download page](https://go.dev/dl/).
+
+
+## Pacing
+
+This roadmap is intended to run at **one module per day**. With 24 learning days available across 4 weeks at 6 days per week, the default expectation is one primary module each day, with one spare day available for spillover, revision, or catch-up.
+
+### Day Map
+
+- Day 1: Module 1.1
+- Day 2: Module 1.2
+- Day 3: Module 1.3
+- Day 4: Module 1.4
+- Day 5: Module 1.5
+- Day 6: Module 1.6
+- Day 7: Module 2.1
+- Day 8: Module 2.2
+- Day 9: Module 2.3
+- Day 10: Module 2.4
+- Day 11: Module 2.5
+- Day 12: Week 2 checkpoint, revision, and spillover
+- Day 13: Module 3.1
+- Day 14: Module 3.2
+- Day 15: Module 3.3
+- Day 16: Module 3.4
+- Day 17: Module 3.5
+- Day 18: Module 3.6
+- Day 19: Module 4.1
+- Day 20: Module 4.2
+- Day 21: Module 4.3
+- Day 22: Module 4.4
+- Day 23: Module 4.5
+- Day 24: Module 4.6 and final wrap-up
+
 
 ---
 
@@ -55,7 +87,7 @@ flowchart TD
 
 # Week 1: Go Foundations and Idiomatic Programming
 
-## Module 1.1: Environment, packages, modules, and tooling
+## Day 1 - Module 1.1: Environment, packages, modules, and tooling
 
 ### Learn
 
@@ -95,7 +127,7 @@ Implement a command that displays the application name, version, and available c
 
 ---
 
-## Module 1.2: Language fundamentals
+## Day 2 - Module 1.2: Language fundamentals
 
 ### Learn
 
@@ -131,7 +163,7 @@ Implement a command that displays the application name, version, and available c
 
 ---
 
-## Module 1.3: Arrays, slices, maps, strings, and runes
+## Day 3 - Module 1.3: Arrays, slices, maps, strings, and runes
 
 ### Learn
 
@@ -173,7 +205,7 @@ Support creating, retrieving, listing, updating, and deleting jobs.
 
 ---
 
-## Module 1.4: Structs, methods, pointers, and interfaces
+## Day 4 - Module 1.4: Structs, methods, pointers, and interfaces
 
 ### Learn
 
@@ -203,7 +235,7 @@ Define interfaces where they are consumed. Prefer small interfaces and avoid cre
 
 ---
 
-## Module 1.5: Error handling
+## Day 5 - Module 1.5: Error handling
 
 ### Learn
 
@@ -235,7 +267,7 @@ An error should be handled or returned with context. Avoid logging and returning
 
 ---
 
-## Module 1.6: I/O, JSON, files, and configuration
+## Day 6 - Module 1.6: I/O, JSON, files, and configuration
 
 ### Learn
 
@@ -280,7 +312,7 @@ Be able to explain:
 
 # Week 2: HTTP APIs, Architecture, Databases, and Testing
 
-## Module 2.1: Building HTTP servers
+## Day 7 - Module 2.1: Building HTTP servers
 
 Start with the standard `net/http` package before using a web framework.
 
@@ -326,7 +358,7 @@ Use consistent errors:
 
 ---
 
-## Module 2.2: Middleware and API reliability
+## Day 8 - Module 2.2: Middleware and API reliability
 
 Implement middleware for:
 
@@ -343,7 +375,7 @@ Learn middleware chaining, request-scoped context values, authentication versus 
 
 ---
 
-## Module 2.3: Project organization and architecture
+## Day 9 - Module 2.3: Project organization and architecture
 
 Use a simple layered structure:
 
@@ -383,7 +415,7 @@ Do not create dozens of tiny packages. Package boundaries should represent real 
 
 ---
 
-## Module 2.4: PostgreSQL and `database/sql`
+## Day 10 - Module 2.4: PostgreSQL and `database/sql`
 
 ### Learn
 
@@ -428,7 +460,7 @@ Replace file persistence with PostgreSQL without changing the service layer's `J
 
 ---
 
-## Module 2.5: Testing fundamentals
+## Day 11 - Module 2.5: Testing fundamentals
 
 ### Learn
 
@@ -471,7 +503,7 @@ Be able to explain:
 
 # Week 3: Concurrency and Reliable Background Processing
 
-## Module 3.1: Goroutines and channels
+## Day 13 - Module 3.1: Goroutines and channels
 
 ### Learn
 
@@ -497,7 +529,7 @@ Every goroutine should have:
 
 ---
 
-## Module 3.2: Synchronization
+## Day 14 - Module 3.2: Synchronization
 
 ### Learn
 
@@ -519,7 +551,7 @@ General guidance:
 
 ---
 
-## Module 3.3: Worker pool
+## Day 15 - Module 3.3: Worker pool
 
 Build:
 
@@ -535,7 +567,7 @@ Build:
 
 ---
 
-## Module 3.4: Context, cancellation, and graceful shutdown
+## Day 16 - Module 3.4: Context, cancellation, and graceful shutdown
 
 ### Learn
 
@@ -564,7 +596,7 @@ A context carries deadlines and cancellation signals across API boundaries and i
 
 ---
 
-## Module 3.5: Retries and failure handling
+## Day 17 - Module 3.5: Retries and failure handling
 
 ### Learn
 
@@ -590,7 +622,7 @@ Add jitter and a maximum delay in the real implementation. Assume every job migh
 
 ---
 
-## Module 3.6: Concurrency testing
+## Day 18 - Module 3.6: Concurrency testing
 
 ### Learn
 
@@ -633,7 +665,7 @@ Be able to explain:
 
 # Week 4: Production Readiness, Performance, Security, and Deployment
 
-## Module 4.1: Structured logging
+## Day 19 - Module 4.1: Structured logging
 
 Use the standard `log/slog` package.
 
@@ -661,7 +693,7 @@ See the official [`log/slog` documentation](https://pkg.go.dev/log/slog).
 
 ---
 
-## Module 4.2: Observability
+## Day 20 - Module 4.2: Observability
 
 Understand the three pillars:
 
@@ -683,7 +715,7 @@ Learn counters, gauges, histograms, labels, high-cardinality risks, health check
 
 ---
 
-## Module 4.3: Profiling and performance
+## Day 21 - Module 4.3: Profiling and performance
 
 ### Learn
 
@@ -711,7 +743,7 @@ Do not optimize from intuition. Benchmark, profile, fix the measured bottleneck,
 
 ---
 
-## Module 4.4: Security
+## Day 22 - Module 4.4: Security
 
 ### Learn
 
@@ -738,7 +770,7 @@ govulncheck ./...
 
 ---
 
-## Module 4.5: Containers and configuration
+## Day 23 - Module 4.5: Containers and configuration
 
 ### Learn
 
@@ -769,7 +801,7 @@ Production rules:
 
 ---
 
-## Module 4.6: CI and engineering workflow
+## Day 24 - Module 4.6: CI and engineering workflow
 
 Configure CI to run:
 
@@ -909,4 +941,5 @@ This understanding is considerably more valuable in interviews and production en
 - [Diagnostics](https://go.dev/doc/diagnostics)
 - [Security Best Practices](https://go.dev/doc/security/best-practices)
 - [Vulnerability Management](https://go.dev/doc/security/vuln/)
+
 

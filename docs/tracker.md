@@ -3,11 +3,11 @@
 ## Current Position
 
 - Current week: Week 1
-- Current module: Module 1.2 | 2026-08-18
-- Current topic: variables, zero values, and short declaration with `:=`
+- Current day and module: Day 3 | Module 1.3 | 2026-08-19
+- Current topic: arrays vs slices, slice length/capacity, and `append`
 - Status: Learning
 - Started: 2026-08-18
-- Last updated: 2026-08-18
+- Last updated: 2026-08-19
 
 ## Overall Progress
 
@@ -16,14 +16,16 @@
 - [ ] Week 3: Concurrency and background processing
 - [ ] Week 4: Production readiness and deployment
 
-## Current Module: Module 1.1 | 2026-08-18
+## Current Module: Day 2 | Module 1.2 | 2026-08-19
 
 ### Learning objectives
 
-- [x] Explain packages versus modules
-- [x] Explain why `package main` and `func main` are special
-- [x] Use the basic Go toolchain commands
-- [x] Create the initial GoFlow module structure
+- [x] Explain variables and constants
+- [x] Use short declaration with `:=`
+- [x] Explain zero values for common types
+- [x] Use `if`, `switch`, `for`, and `range`
+- [x] Write basic functions and explain multiple returns
+- [x] Explain `defer`, scope, shadowing, and `iota`
 
 ### Theory
 
@@ -46,19 +48,19 @@
 
 ### Completion evidence
 
-- Exercise: explained package vs module; explained why only `package main` with `func main()` is executable; implemented CLI command dispatch and command-specific argument validation
-- Files changed: `go.mod`, `cmd/goflow/main.go`, `docs/tracker.md`, `docs/learning.md`, `docs/session-log.md`, `docs/decisions.md`, `README.md`
-- Tests run: `go run ./cmd/goflow`, `go build ./cmd/goflow`, `go test ./...`, `go vet ./...`, `gofmt -w ./cmd/goflow/main.go`
-- Concepts demonstrated: module root vs package directory; `main` package entry point; toolchain basics; `os.Args`; safe slice bounds checks; small helper refactor
-- Remaining weaknesses: Module 1.2 theory and exercises not started yet; no automated tests written yet for the CLI
+- Exercise: completed focused exercises for `maxPriority`, `countByStatus`, `isValidJobName`, `retryDelay`, and `filterCompleted`; answered concept checks on zero values, `:=` vs `=`, `if`, `range`, multiple returns, `defer`, shadowing, and `iota`
+- Files changed: `cmd/goflow/main.go`, `docs/tracker.md`, `docs/learning.md`, `docs/session-log.md`
+- Tests run: `gofmt -w ./cmd/goflow/main.go`, `go vet ./...`, `go test ./...`
+- Concepts demonstrated: zero values; constants vs variables; explicit boolean conditions; safe `range` usage with `_`; multiple returns; deferred cleanup; shadowing; `iota`; simple loop-based algorithms over slices and maps
+- Remaining weaknesses: needs more repetition for precise wording around `:=` vs `=` and the exact purpose of `defer`; no automated tests written yet for the practice functions
 
 ## Blockers
 
-- Repository is not initialized as a Git repository yet.
+- None
 
 ## Next Session
 
-- Module: Module 1.2 | 2026-08-18
-- Exact next topic: `var`, zero values, type inference, and `:=`
-- Exact next exercise: explain the difference between `var count int` and `count := 0`, then write a small variables exercise
-- Exact next project task: keep the existing CLI entry point and use Module 1.2 concepts in a small focused Go exercise before expanding project behavior
+- Day and module: Day 3 | Module 1.3 | 2026-08-19
+- Exact next topic: arrays vs slices, slice length/capacity, and how `append` grows slices
+- Exact next exercise: explain the difference between an array and a slice, then inspect how filtering with `append` built a new slice in `filterCompleted`
+- Exact next project task: start an in-memory job model and storage helpers using slices or maps before building the full Module 1.3 job store
