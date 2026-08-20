@@ -246,6 +246,143 @@ Go language fundamentals are about explicit state and explicit control flow. `va
 - Effective Go: https://go.dev/doc/effective_go
 - Go Language Specification: https://go.dev/ref/spec
 
+### Day 3: Module 1.3 - Arrays, Slices, Maps, Strings, and Runes
+
+#### Learning objectives
+
+- Explain the difference between arrays and slices.
+- Understand slice length, capacity, and `append` behavior.
+- Understand how slices can share backing arrays and when to use `copy`.
+- Distinguish nil slices from empty slices.
+- Use maps for keyed lookup and existence checks.
+- Understand `make` vs `new` and basic value semantics.
+- Apply these collection rules to the first in-memory GoFlow store.
+
+#### Core concepts
+
+- Arrays have fixed size, and the size is part of the type.
+- Slices are flexible views over underlying array storage.
+- `len` is current element count; `cap` is growth room within current backing storage.
+- `append` returns the slice you must use afterward, because it may allocate new backing storage.
+- Slice assignment shares data; `copy` can create independent storage.
+- Nil slices and empty slices both have length `0`, but only nil slices compare equal to `nil`.
+- Reading a missing map key returns the zero value of the value type; `value, ok := m[key]` distinguishes missing from present.
+- Struct values copy by value, while slice/map values still refer to shared underlying runtime data.
+
+#### How it works
+
+1. Use slices for most collection work and arrays only when fixed size is semantically important.
+2. Inspect `len` and `cap` to reason about current size versus growth room.
+3. Always keep the result of `append`, because the resulting slice may refer to new storage.
+4. Use `copy` when you need an independent slice rather than another view into shared data.
+5. Use maps for direct ID-based lookup and the `ok` form when missing keys matter.
+6. Use `make` to initialize ready-to-use maps and slices.
+7. Remember that retrieving a struct from `map[string]Job` gives a copy that must be written back if changed.
+
+#### Example
+
+```go
+arr := [5]int{10, 20, 30, 40, 50}
+s := arr[1:3]
+
+len(s) // 2
+cap(s) // 4
+
+s = append(s, 60)
+```
+
+And for maps:
+
+```go
+counts := map[string]int{"pending": 2}
+value, ok := counts["done"]
+```
+
+#### Role in our project
+
+Day 3 created the first in-memory job model and store for GoFlow:
+
+- `JobStatus`
+- `Job`
+- `Store`
+- `NewStore()`
+- `Create`, `Get`, `List`, `Update`, and `Delete`
+
+The store uses `map[string]Job` because job ID lookup is the main access pattern.
+
+#### Why it is designed this way
+
+- Slices and maps are the normal Go tools for dynamic collections and keyed lookup.
+- Day 3 teaches the underlying storage behavior before Day 4 introduces richer struct/method boundaries.
+- The in-memory store is intentionally simple so the module stays focused on collection semantics.
+
+#### Alternatives and trade-offs
+
+- A `[]Job` store would preserve insertion order more naturally, but ID lookup/update/delete would require scanning.
+- A `map[string]*Job` store would change mutation behavior, but introducing pointer semantics now would blur the Day 3 focus.
+- Splitting into separate packages now would be cleaner long-term, but it would add architectural decisions before the roadmap reaches them.
+
+#### Failure modes
+
+- Forgetting to assign the result of `append` back to the slice variable.
+- Mutating one slice and unintentionally affecting another because they share backing storage.
+- Assuming `len` and `cap` mean the same thing.
+- Treating nil and empty slices as identical in every context.
+- Assuming map iteration order is stable.
+- Mutating a retrieved struct copy and expecting the map entry to update automatically.
+
+#### Common mistakes
+
+- Explaining a slice only as “part of an array” instead of as a flexible view over storage.
+- Saying capacity means “how many times it can grow” instead of “how many total elements fit before reallocation.”
+- Forgetting that `dst := src` shares slice data while `copy(dst, src)` can create independence.
+- Forgetting that `delete` on a missing map key is safe and does nothing.
+
+#### Production implications
+
+- Shared backing arrays create subtle bugs when data is sliced and passed around carelessly.
+- Stable ordering is not guaranteed when listing map contents, which affects CLI output and future tests.
+- Value semantics matter when reading/updating structs from maps.
+- Correct use of `make` prevents nil-map write panics and avoids awkward initialization bugs.
+
+#### Interview explanation
+
+In Go, arrays are fixed-size values whose length is part of the type, while slices are flexible views over underlying array storage. `append`, `copy`, `len`, and `cap` determine how slices grow and share memory. Maps provide direct keyed lookup, but map iteration order is intentionally unstable. These rules matter immediately when building an in-memory job store.
+
+#### Questions for revision
+
+1. What is the difference between an array and a slice?
+   Answer: An array is fixed-size storage and its length is part of the type. A slice is a flexible view over elements, usually backed by an array.
+
+2. Why do we usually write `s = append(s, x)` instead of just `append(s, x)`?
+   Answer: Because `append` returns the slice you must use afterward, and it may refer to new backing storage if reallocation happened.
+
+3. Why can two slices affect each other's contents?
+   Answer: Because both slice values can refer to the same backing array.
+
+4. Why is `make(map[string]Job)` the right choice for the store?
+   Answer: `make` returns a ready-to-use map value, so inserts are safe immediately.
+
+5. Why does changing a `Job` returned from `Get(id)` not automatically update the stored job?
+   Answer: Because `Get` returns a `Job` value, which is a copy of the struct stored in the map; the updated value must be written back.
+
+#### Active recall review
+
+1. Question: Why is `cap(arr[1:3])` not the same as `len(arr[1:3])`?
+   Answer: The length is the number of currently visible elements, while the capacity is how much backing-array room remains from the slice start to the end of the array.
+
+2. Question: Why is `value, ok := myMap[key]` safer than just `value := myMap[key]` when key existence matters?
+   Answer: Because `value` alone cannot distinguish “missing key” from “present key with zero value.”
+
+3. Question: Why is `List()` on `map[string]Job` not guaranteed to return jobs in a stable order?
+   Answer: Because Go deliberately does not guarantee map iteration order.
+
+#### References
+
+- A Tour of Go: https://go.dev/tour/moretypes/1
+- Go Slices: usage and internals: https://go.dev/blog/slices-intro
+- Effective Go: https://go.dev/doc/effective_go
+
 ## Module 2: HTTP, Architecture, Databases, and Testing
 
 ### Day 7: Module 2.1 - Building HTTP Servers
@@ -285,3 +422,4 @@ Go language fundamentals are about explicit state and explicit control flow. `va
 ### Day 23: Module 4.5 - Containers and Configuration
 
 ### Day 24: Module 4.6 - CI and Engineering Workflow
+

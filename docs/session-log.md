@@ -121,3 +121,57 @@
 ### Next session
 
 - Start Module 1.3 with arrays versus slices, slice length/capacity, and `append`
+## 2026-08-20 — Module 1.3 completion
+
+### Topics covered
+
+- Arrays vs slices
+- Slice length, capacity, `append`, and shared backing arrays
+- `copy`, nil vs empty slices, and value semantics
+- Maps, key-existence checks, and `delete`
+- Strings, UTF-8, bytes, and runes at the conceptual level
+- `make` vs `new`
+- In-memory job-store design using `map[string]Job`
+
+### Work completed
+
+- Resumed from the exact Day 3 tracker position
+- Taught and checked the main slice/map/storage concepts in sequence
+- Reviewed and corrected the first `store.go` implementation
+- Completed the in-memory `JobStatus`, `Job`, and `Store` increment with create/get/list/update/delete behavior
+- Updated tracker and learning notes into the clearer day-by-day format
+- Marked Module 1.3 complete and set Module 1.4 as the next resume point
+
+### Commands run
+
+- `Get-Content -LiteralPath 'Go_Industry_Roadmap_4_Weeks.md'`
+- `Get-Content -LiteralPath 'docs/tracker.md'`
+- `Get-Content -LiteralPath 'docs/learning.md'`
+- `Get-Content -LiteralPath 'docs/session-log.md'`
+- `Get-Content -LiteralPath 'cmd/goflow/main.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/store.go'`
+- `gofmt -w ./cmd/goflow/store.go`
+- `go vet ./...`
+- `go test ./...`
+
+### Problems encountered
+
+- The first `store.go` used `package store` while `main.go` used `package main`, which would have broken builds; fixed after review
+- The local sandbox helper still prevented patch-based edits, so record updates continued through direct file writes outside the sandbox
+
+### What I understood well
+
+- Arrays have fixed size as part of the type, while slices are flexible views over storage
+- `append` must usually be assigned back because it returns the slice to use afterward
+- Slices can affect each other when they share backing storage
+- `make(map[string]Job)` is the correct way to initialize the in-memory store map
+- Mutating a `Job` returned by `Get(id)` does not update the map automatically because of value semantics
+
+### What needs revision
+
+- Explain slice capacity more precisely without describing it as “growing N times”
+- Revisit stable ordering concerns if future CLI output or tests require deterministic `List()` results
+
+### Next session
+
+- Start Day 4, Module 1.4 with structs, methods, pointers, and interfaces on 2026-08-21
