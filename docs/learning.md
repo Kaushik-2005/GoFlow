@@ -1,39 +1,38 @@
 # Go Learning Notes
 
-## Week 1: Foundations and Idiomatic Go
+## Table of Contents
 
-### Module 1.1: Environment, Packages, and Modules
+- Module 1: Foundations and Idiomatic Go
+- Module 2: HTTP, Architecture, Databases, and Testing
+- Module 3: Concurrency and Reliable Background Processing
+- Module 4: Production Readiness, Performance, Security, and Deployment
 
-#### Concept
+## Module 1: Foundations and Idiomatic Go
 
-Go organizes code at two levels:
+### Day 1: Module 1.1 - Environment, Packages, Modules, and Tooling
+
+#### Learning objectives
+
+- Distinguish a Go package from a Go module.
+- Explain why only `package main` with `func main()` builds an executable.
+- Use the basic Go toolchain commands: `go run`, `go build`, `go test`, `go vet`, and `gofmt`.
+- Build the first GoFlow CLI scaffold under `cmd/goflow`.
+
+#### Core concepts
 
 - A `package` is a directory of `.go` files compiled together.
-- A `module` is a versioned collection of packages defined by `go.mod`.
+- A `module` is a versioned project boundary defined by `go.mod`.
+- A runnable Go program comes from a package named `main` that defines `func main()`.
+- The Go toolchain owns dependency resolution, builds, tests, formatting, and basic validation.
 
-To build an executable, a package must be named `main` and must define `func main()`.
+#### How it works
 
-#### Why it matters
+1. Create the module root with `go mod init`.
+2. Put the executable entry point in a `main` package, typically under `cmd/...`.
+3. Use `go run` for quick execution, `go build` for a binary, `go test` for tests, `go vet` for suspicious code, and `gofmt` for standard formatting.
+4. Keep reusable logic out of `main` so the entry package stays small and focused.
 
-This is the first structural idea in Go. If you do not understand package boundaries, module roots, and the toolchain, the rest of the language feels arbitrary. Real Go services are assembled from many packages inside one module, then built into one or more binaries.
-
-#### Mental model
-
-Think in layers:
-
-- File: one source file
-- Package: one compile unit made from files in the same directory
-- Module: one dependency and version boundary made from related packages
-- Binary: the final executable produced from a `main` package
-
-Python comparison:
-
-- A rough Python analogy is that a package is like an importable module/package directory, while a Go module is closer to the whole distributable project boundary managed by `pyproject.toml` plus dependency lock behavior.
-- The important difference is that Go's module system is built into the language toolchain, not bolted on through separate packaging conventions.
-
-#### Syntax
-
-Minimal executable:
+#### Example
 
 ```go
 package main
@@ -45,162 +44,106 @@ func main() {
 }
 ```
 
-Key points:
+#### Role in our project
 
-- `package main` marks this package as executable.
-- `func main()` is the program entry point.
-- Imports must be used, or compilation fails.
+- Day 1 created the first GoFlow scaffold.
+- The project now has `go.mod` at the root and one executable package under `cmd/goflow`.
+- This is the starting point for all later CLI, API, and worker binaries.
 
-#### Idiomatic Go
+#### Why it is designed this way
 
-- Keep `main` packages thin. Their job is wiring, startup, and shutdown.
-- Put reusable logic in non-`main` packages.
-- Name packages by responsibility, not by type of file.
-- Let `go.mod` define the module root early.
+- Go makes structure explicit early so builds, imports, and dependencies stay predictable.
+- `cmd/...` is a common layout because it separates runnable binaries from reusable internal code.
+- A thin `main` package is easier to maintain and test around.
 
-#### Python comparison
+#### Alternatives and trade-offs
 
-Python often lets structure remain loose for a while. Go pushes structure earlier:
+- Putting everything in one root `main.go` is faster at first, but it becomes messy sooner.
+- Using a framework or larger architecture immediately adds more moving parts before the fundamentals are clear.
 
-- unused imports are errors
-- circular imports are not allowed
-- project layout affects buildability more directly
-- dependency management is standardized through `go.mod` and `go.sum`
+#### Failure modes
 
-This strictness buys faster builds, clearer ownership, and fewer packaging surprises in production.
+- Confusing package boundaries with module boundaries.
+- Putting `go.mod` inside a nested directory like `cmd/goflow`.
+- Forgetting that only `package main` plus `func main()` is runnable.
+- Treating `gofmt` as optional style polish instead of normal Go practice.
 
 #### Common mistakes
 
-- Confusing a package with a module
-- Assuming every package can be run directly
-- Putting unrelated responsibilities into `main`
-- Treating `go.mod` as optional
-- Expecting Go to allow unused variables or imports during early experimentation
-
-#### Project application
-
-GoFlow will eventually have multiple binaries, likely:
-
-- `cmd/api`
-- `cmd/worker`
-
-Each binary will be its own `main` package, while shared logic will live under `internal/...`.
-
-For the first increment, we started smaller with one CLI entry point under `cmd/goflow`.
-
-#### Interview questions
-
-- What is the difference between a Go package and a Go module?
-- Why are `package main` and `func main()` special?
-- Why does Go enforce unused import and variable checks?
-- Why do many Go repos place binaries under `cmd/`?
-
-#### Official references
-
-- Required: [How to Write Go Code](https://go.dev/doc/code) — understand packages, modules, workspace layout, and the build model
-- Required: [Go Modules Reference](https://go.dev/ref/mod) — understand what `go.mod` and `go.sum` are for
-- Optional: [Effective Go](https://go.dev/doc/effective_go) — package naming and layout conventions
-
-#### My questions and corrections
-
-- Correction: a module is not only the project boundary; it is also the dependency and versioning boundary defined by `go.mod`.
-- Confirmed understanding: only a package named `main` with `func main()` becomes an executable entry point.
-- Confirmed understanding: `go.mod` belongs at the module root, not inside `cmd/goflow`.
-- Correction from exercise review: changing help text is not the same as implementing command behavior; the `switch` cases must be updated too.
-- Confirmed understanding: `len(os.Args) < 2` protects access to `os.Args[1]`, while `len(os.Args) < 3` protects access to command-specific arguments like `os.Args[2]`.
-
-#### Small example
-
-Completed CLI shape:
-
-```go
-package main
-
-import (
-	"fmt"
-	"os"
-)
-
-func requireArg(args []string, index int, message string) (string, bool) {
-	if len(args) <= index {
-		fmt.Println(message)
-		return "", false
-	}
-	return args[index], true
-}
-
-func printHelp() {
-	fmt.Println("Usage: goflow <command>")
-	fmt.Println("Commands: list, create, get, process")
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		printHelp()
-		return
-	}
-
-	switch os.Args[1] {
-	case "list":
-		fmt.Println("listing jobs")
-	case "create":
-		jobType, ok := requireArg(os.Args, 2, "missing job type")
-		if !ok {
-			return
-		}
-		fmt.Printf("creating job of type: %s\n", jobType)
-	case "get":
-		jobID, ok := requireArg(os.Args, 2, "missing job id")
-		if !ok {
-			return
-		}
-		fmt.Printf("getting job: %s\n", jobID)
-	case "process":
-		jobID, ok := requireArg(os.Args, 2, "missing job id")
-		if !ok {
-			return
-		}
-		fmt.Printf("processing job: %s\n", jobID)
-	default:
-		fmt.Printf("unknown command: %s\n", os.Args[1])
-	}
-}
-```
+- Saying a module is only a folder boundary instead of a dependency and versioning boundary too.
+- Updating help text without updating actual CLI behavior.
+- Accessing `os.Args[1]` or `os.Args[2]` without length checks.
 
 #### Production implications
 
-- `main()` should coordinate startup and dispatch, not accumulate all business logic.
-- Exact CLI output matters once tests are added, so string precision is part of correctness.
-- Small helper functions are useful when they remove real repetition without introducing unnecessary abstraction.
+- Small CLI and service entry points keep startup logic understandable.
+- Standardized toolchain commands reduce environment-specific behavior.
+- Strict compiler and tooling rules catch a lot of issues early.
 
-#### Project application
+#### Interview explanation
 
-- Module 1.1 produced the first runnable GoFlow CLI scaffold under `cmd/goflow`.
-- The project now has a module root with `go.mod` and one executable package.
-- This layout is the basis for later expansion into richer CLI behavior and, later in the roadmap, separate binaries.
+A Go package is the compile unit; a Go module is the dependency and version boundary defined by `go.mod`. To build an executable, the package must be named `main` and define `func main()`. The normal development loop uses `go run`, `go build`, `go test`, `go vet`, and `gofmt`.
 
-### Module 1.2: Language Fundamentals
+#### Questions for revision
 
-#### Concept
+1. What is the difference between a Go package and a Go module?
+   Answer: A package is a directory of Go files compiled together. A module is the versioned project boundary defined by `go.mod` and can contain multiple packages.
 
-Module 1.2 covers the core control-flow and state-building tools in Go: variables, constants, zero values, type conversion, branching, loops, functions, multiple return values, `defer`, scope, shadowing, and `iota`.
+2. Why can every package not become an executable?
+   Answer: Only a package named `main` with `func main()` gives Go a program entry point to run.
 
-#### Why it matters
+3. Why does `go.mod` belong at the project root here?
+   Answer: It defines the module boundary for the whole project, including `cmd/goflow` and later packages.
 
-These are the mechanics behind almost every line of ordinary Go code. Before building data structures and storage layers, you need to be comfortable reading and writing small functions with predictable state and control flow.
+4. Why is `len(os.Args)` checked before indexing command arguments?
+   Answer: Because reading a missing element would panic with an index-out-of-range error.
 
-#### Mental model
+#### Active recall review
 
-- `var` declares a variable with an explicit type or inferred zero value.
+1. Question: Why is `go test ./...` useful even before tests exist?
+   Answer: It still loads and checks all packages and reports `[no test files]` rather than failing if there are simply no `_test.go` files.
+
+2. Question: Why is `go vet` useful when the code already compiles?
+   Answer: It catches suspicious patterns and likely mistakes that still pass the compiler.
+
+#### References
+
+- How to Write Go Code: https://go.dev/doc/code
+- Go Modules Reference: https://go.dev/ref/mod
+- Effective Go: https://go.dev/doc/effective_go
+
+### Day 2: Module 1.2 - Language Fundamentals
+
+#### Learning objectives
+
+- Explain variables, constants, and zero values.
+- Use `:=` versus `=` correctly.
+- Understand explicit type conversion.
+- Use `if`, `switch`, `for`, and `range` correctly.
+- Write small functions, including multiple return values.
+- Explain `defer`, scope, shadowing, and `iota`.
+
+#### Core concepts
+
+- `var` declares a variable with an explicit type or with a zero value.
 - `:=` declares and initializes a new variable.
 - `=` updates an existing variable.
-- Go conditions must be real `bool` expressions, not truthy/falsy values.
-- `for` is the only loop keyword; `range` is a common iteration form built on top of it.
-- Multiple returns let a function return data plus status information.
-- `defer` schedules cleanup for function exit.
-- Inner scopes can shadow outer variables if you accidentally use `:=`.
+- Go conditions require real boolean expressions.
+- `for` is the only loop keyword; `range` is a common iteration form.
+- Multiple returns commonly express data plus status information.
+- `defer` schedules cleanup at function return.
+- `iota` generates incrementing constants inside a `const` block.
 
-#### Syntax
+#### How it works
+
+1. Use zero values deliberately rather than assuming uninitialized state is unsafe.
+2. Use `:=` when creating a new local variable and `=` when updating an existing one.
+3. Write direct boolean conditions like `attempts < maxRetries` instead of relying on truthy/falsy rules.
+4. Use `range` with `_` when you intentionally ignore a returned value.
+5. Use multiple returns for patterns like `value, ok` or `result, err`.
+6. Place `defer` close to the resource acquisition it should clean up.
+
+#### Example
 
 ```go
 var count int
@@ -223,35 +166,9 @@ func divide(a, b int) (int, bool) {
 }
 ```
 
-#### Idiomatic Go
+#### Role in our project
 
-- Use zero values intentionally; they are part of the design, not an accident.
-- Use `:=` for short local declarations when it improves clarity.
-- Use `=` when you mean update, especially to avoid shadowing.
-- Keep branching explicit; write boolean expressions directly.
-- Use `_` to ignore a `range` value you do not need.
-- Prefer small functions that do one clear thing.
-
-#### Python comparison
-
-- Python uses truthy/falsy rules; Go requires a real `bool` in conditions.
-- Python allows unused variables freely; Go rejects them.
-- Python has separate `for` and `while`; Go uses `for` for both roles.
-- Python has no direct equivalent to Go's `iota` constant counter.
-- Python cleanup often depends on context managers; Go often uses `defer`.
-
-#### Common mistakes
-
-- Saying `:=` is just assignment instead of new-variable declaration.
-- Forgetting that declared variables already have zero values.
-- Writing `if count {}` when `count` is an `int`.
-- Forgetting `_` and leaving an unused index variable in a `range` loop.
-- Using `:=` in an inner scope when you meant to update an outer variable.
-- Explaining `defer` only as “runs last” instead of “runs at function return for cleanup.”
-
-#### Project application
-
-Module 1.2 concepts were applied by adding small helper functions to the GoFlow CLI package:
+Module 1.2 produced the first small helper functions in the GoFlow CLI package:
 
 - `maxPriority(priorities []int) int`
 - `countByStatus(statuses []string) map[string]int`
@@ -259,68 +176,112 @@ Module 1.2 concepts were applied by adding small helper functions to the GoFlow 
 - `retryDelay(attempt int) int`
 - `filterCompleted(statuses []string) []string`
 
-These are still small exercises, but they map directly to later GoFlow responsibilities like retries, status counting, filtering, and validation.
+These are still focused exercises, but they map directly to later job validation, filtering, counting, and retry logic.
 
-#### Interview questions
+#### Why it is designed this way
 
-- What is the difference between `var count int` and `count := 0`?
-- Why is `if count {}` invalid when `count` is an `int`?
-- What does `value, ok := map[key]` represent?
-- What problem does `defer` solve?
-- What is variable shadowing in Go?
-- How does `iota` work inside a `const` block?
+- Go favors explicit control flow and explicit state changes over implicit magic.
+- Zero values reduce boilerplate but still require careful interpretation.
+- Multiple returns and `defer` support simple, safe code patterns without exceptions.
 
-#### Official references
+#### Alternatives and trade-offs
 
-- Required: [A Tour of Go](https://go.dev/tour/) — review variables, flow control, methods of iteration, and functions
-- Required: [Effective Go](https://go.dev/doc/effective_go) — review declarations, control structures, and idiomatic style
-- Optional: [Go Language Specification](https://go.dev/ref/spec) — reference for declarations, statements, and constants
+- Python-style truthiness is shorter, but Go prefers clarity over convenience in conditions.
+- A larger abstraction around these functions would be premature at this stage.
 
-#### My questions and corrections
+#### Failure modes
 
-- Correction: `:=` declares and initializes a new variable; `=` updates an existing one.
-- Confirmed understanding: zero value of `string` is `""`, of `bool` is `false`, and of `int` is `0`.
-- Confirmed understanding: `counts[status]++` works on a missing map key because the zero value of `int` is `0`.
-- Correction: the second return value in `divide(a, b)` represented whether the operation was valid, not whether the division was even.
-- Correction: `defer` is primarily about cleanup at function return, not just “running last.”
-- Confirmed understanding: `_` is used in `range` to intentionally ignore an unused value.
-- Confirmed understanding: `iota` starts at `0`, increments per line in a `const` block, and resets in a new block.
+- Shadowing a variable by using `:=` when `=` was intended.
+- Writing `if count {}` where `count` is an `int`.
+- Forgetting `_` in `range` and creating an unused variable compile error.
+- Explaining `defer` only as “runs last” without understanding that it is about cleanup at function return.
 
-#### Small examples
+#### Common mistakes
 
-```go
-func maxPriority(priorities []int) int {
-	max := priorities[0]
-	for _, priority := range priorities {
-		if priority > max {
-			max = priority
-		}
-	}
-	return max
-}
-
-func countByStatus(statuses []string) map[string]int {
-	counts := make(map[string]int)
-	for _, status := range statuses {
-		counts[status]++
-	}
-	return counts
-}
-
-func retryDelay(attempt int) int {
-	return 1 << attempt
-}
-```
+- Saying `:=` is just assignment.
+- Forgetting that missing map keys return the zero value of the map’s value type.
+- Thinking the second return value in a function like `divide(a, b)` means “evenly divisible” rather than “operation valid.”
 
 #### Production implications
 
-- Zero values simplify initialization but must still be interpreted carefully in domain logic.
-- Shadowing bugs are easy to write and often subtle in larger functions.
-- `defer` keeps cleanup next to acquisition and makes early-return code safer.
-- Explicit boolean conditions and explicit type conversions make code noisier than Python, but much less ambiguous.
+- Explicit conversions and boolean conditions make code noisier than Python, but much less ambiguous.
+- Shadowing bugs are subtle and common in larger Go functions.
+- `defer` keeps cleanup next to acquisition and makes early returns safer.
 
-#### Project application
+#### Interview explanation
 
-- The CLI package now contains several small language-fundamentals functions alongside the command dispatcher.
-- These are stepping stones toward the Week 1 CLI deliverable and later job-store logic.
-- The next module should separate storage/data behavior more intentionally rather than growing everything inside `main.go` forever.
+Go language fundamentals are about explicit state and explicit control flow. `var` plus zero values, `:=` versus `=`, direct boolean conditions, `for`/`range`, multiple returns, and `defer` are the patterns behind most ordinary Go code.
+
+#### Questions for revision
+
+1. What is the difference between `var count int` and `count := 0`?
+   Answer: `var count int` declares `count` with explicit type `int` and zero value `0`. `count := 0` declares a new variable and infers its type from the right-hand side.
+
+2. Why is `if count {}` invalid when `count` is an `int`?
+   Answer: Go requires an actual `bool` expression in conditions and does not use integer truthiness.
+
+3. Why does `counts[status]++` work for a missing key in `map[string]int`?
+   Answer: Missing keys return the zero value of `int`, which is `0`, so incrementing starts from `0`.
+
+4. What problem does `defer` solve?
+   Answer: It schedules cleanup at function return, which keeps cleanup near resource acquisition and protects early-return paths.
+
+5. How does `iota` work?
+   Answer: It starts at `0`, increments per line in a `const` block, and resets in a new `const` block.
+
+#### Active recall review
+
+1. Question: Why do we use `_` in `for _, job := range jobs`?
+   Answer: To intentionally ignore the index and avoid an unused variable compile error.
+
+2. Question: Why is `max := priorities[0]` safe only under a specific assumption?
+   Answer: It assumes the slice is non-empty; otherwise indexing `priorities[0]` would panic.
+
+3. Question: What does `1 << attempt` mean in the retry delay function?
+   Answer: It left-shifts `1` by `attempt` bits, producing powers of two such as `1, 2, 4, 8`.
+
+#### References
+
+- A Tour of Go: https://go.dev/tour/
+- Effective Go: https://go.dev/doc/effective_go
+- Go Language Specification: https://go.dev/ref/spec
+
+## Module 2: HTTP, Architecture, Databases, and Testing
+
+### Day 7: Module 2.1 - Building HTTP Servers
+
+### Day 8: Module 2.2 - Middleware and API Reliability
+
+### Day 9: Module 2.3 - Project Organization and Architecture
+
+### Day 10: Module 2.4 - PostgreSQL and `database/sql`
+
+### Day 11: Module 2.5 - Testing Fundamentals
+
+## Module 3: Concurrency and Reliable Background Processing
+
+### Day 13: Module 3.1 - Goroutines and Channels
+
+### Day 14: Module 3.2 - Synchronization
+
+### Day 15: Module 3.3 - Worker Pool
+
+### Day 16: Module 3.4 - Context, Cancellation, and Graceful Shutdown
+
+### Day 17: Module 3.5 - Retries and Failure Handling
+
+### Day 18: Module 3.6 - Concurrency Testing
+
+## Module 4: Production Readiness, Performance, Security, and Deployment
+
+### Day 19: Module 4.1 - Structured Logging
+
+### Day 20: Module 4.2 - Observability
+
+### Day 21: Module 4.3 - Profiling and Performance
+
+### Day 22: Module 4.4 - Security
+
+### Day 23: Module 4.5 - Containers and Configuration
+
+### Day 24: Module 4.6 - CI and Engineering Workflow

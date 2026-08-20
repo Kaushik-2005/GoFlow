@@ -3,64 +3,72 @@
 ## Current Position
 
 - Current week: Week 1
-- Current day and module: Day 3 | Module 1.3 | 2026-08-19
-- Current topic: arrays vs slices, slice length/capacity, and `append`
-- Status: Learning
-- Started: 2026-08-18
-- Last updated: 2026-08-19
+- Current module: Day 3 - Module 1.3
+- Current topic: Arrays vs slices, slice length/capacity, and `append`
+- Current task: Start Module 1.3 theory, then connect slices/maps to the first in-memory job-store design
+- Next milestone: Explain arrays vs slices clearly and begin the in-memory job model for GoFlow
+- Active blockers: None
 
-## Overall Progress
+## Roadmap Progress
 
-- [ ] Week 1: Foundations and idiomatic Go
-- [ ] Week 2: HTTP, architecture, databases, and testing
-- [ ] Week 3: Concurrency and background processing
-- [ ] Week 4: Production readiness and deployment
+| Day | Module | Main Topic | Status | Deliverable | Verification | Confidence |
+|---|---|---|---|---|---|---|
+| 1 | Module 1.1 | Environment, packages, modules, and tooling | Completed | Runnable Go module with CLI entry point and command dispatch scaffold | `go mod init goflow`; `go run ./cmd/goflow`; `go build ./cmd/goflow`; `go test ./...`; `go vet ./...`; learner explained package vs module and why `package main` + `func main()` is executable | 4 |
+| 2 | Module 1.2 | Language fundamentals | Completed | Core helper functions for max priority, status counting, validation, retry delay, and filtering | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; learner answered theory checks on zero values, `:=` vs `=`, `if`, `range`, `defer`, shadowing, and `iota` | 4 |
+| 3 | Module 1.3 | Arrays, slices, maps, strings, and runes | Learning | In-memory job model and early storage helpers | Resume point recorded; theory not started yet for 2026-08-20 | — |
+| 4 | Module 1.4 | Structs, methods, pointers, and interfaces | Not Started | Job struct behavior and first clean boundaries | — | — |
+| 5 | Module 1.5 | Error handling | Not Started | Explicit job-store errors and wrapped failures | — | — |
+| 6 | Module 1.6 | I/O, JSON, files, and configuration | Not Started | Week 1 CLI deliverable with JSON-file persistence | — | — |
+| 7 | Module 2.1 | HTTP servers | Not Started | First `net/http` API endpoints | — | — |
+| 8 | Module 2.2 | Middleware and API reliability | Not Started | Request middleware stack and reliability guards | — | — |
+| 9 | Module 2.3 | Project organization and architecture | Not Started | Clear layered structure for API and worker code | — | — |
+| 10 | Module 2.4 | PostgreSQL and `database/sql` | Not Started | PostgreSQL-backed repository implementation | — | — |
+| 11 | Module 2.5 | Testing fundamentals | Not Started | Tested REST API with repository coverage | — | — |
+| 12 | Week 2 checkpoint | Revision and spillover | Not Started | Checkpoint review and catch-up buffer | — | — |
+| 13 | Module 3.1 | Goroutines and channels | Not Started | First concurrent processing pipeline | — | — |
+| 14 | Module 3.2 | Synchronization | Not Started | Shared-state protection and coordination | — | — |
+| 15 | Module 3.3 | Worker pool | Not Started | Configurable worker pool | — | — |
+| 16 | Module 3.4 | Context and graceful shutdown | Not Started | Controlled shutdown and cancellation flow | — | — |
+| 17 | Module 3.5 | Retries and failure handling | Not Started | Retry policy and dead-letter path | — | — |
+| 18 | Module 3.6 | Concurrency testing | Not Started | Race-tested worker behavior | — | — |
+| 19 | Module 4.1 | Structured logging | Not Started | Structured logs in API and worker paths | — | — |
+| 20 | Module 4.2 | Observability | Not Started | Metrics and health signals | — | — |
+| 21 | Module 4.3 | Profiling and performance | Not Started | Measured performance baseline | — | — |
+| 22 | Module 4.4 | Security | Not Started | Security checklist and safer boundaries | — | — |
+| 23 | Module 4.5 | Containers and configuration | Not Started | Containerized builds and startup config validation | — | — |
+| 24 | Module 4.6 | CI and engineering workflow | Not Started | CI pipeline and production-ready workflow docs | — | — |
 
-## Current Module: Day 2 | Module 1.2 | 2026-08-19
+## Session Log
 
-### Learning objectives
+### 2026-08-18
 
-- [x] Explain variables and constants
-- [x] Use short declaration with `:=`
-- [x] Explain zero values for common types
-- [x] Use `if`, `switch`, `for`, and `range`
-- [x] Write basic functions and explain multiple returns
-- [x] Explain `defer`, scope, shadowing, and `iota`
+- Topics studied: package vs module, `package main`, `func main`, Go toolchain basics, CLI argument handling
+- Work implemented: initialized learning files, created `go.mod`, built `cmd/goflow/main.go`, added CLI command dispatch and helper functions `requireArg` and `printHelp`
+- Tests executed: `go run ./cmd/goflow`; `go build ./cmd/goflow`; `go test ./...`; `go vet ./...`; `gofmt -w ./cmd/goflow/main.go`
+- Results: Module 1.1 completed with working CLI scaffold and validated toolchain usage
+- Problems encountered: shell sandbox helper failures required unsandboxed reads; repo was not initially a Git repository; `go` was briefly unavailable in PowerShell before becoming usable
+- Decisions made: keep the first GoFlow binary small under `cmd/goflow` before introducing larger architecture
+- Topics to revisit: none for Module 1.1 beyond normal review
+- Next action: start Day 2, Module 1.2 with variables, zero values, and short declaration
 
-### Theory
+### 2026-08-19
 
-- [x] Required reading completed
-- [x] Core concept explained
-- [x] Questions answered
-- [x] Knowledge check passed
+- Topics studied: variables, constants, zero values, `:=` vs `=`, explicit conversion, `if`, `switch`, `for`, `range`, functions, multiple returns, `defer`, shadowing, and `iota`
+- Work implemented: added `maxPriority`, `countByStatus`, `isValidJobName`, `retryDelay`, and `filterCompleted` to `cmd/goflow/main.go`
+- Tests executed: `gofmt -w ./cmd/goflow/main.go`; `go run ./cmd/goflow`; `go vet ./...`; `go test ./...`
+- Results: Module 1.2 completed; learner handled the practice exercises and theory checks well enough to advance
+- Problems encountered: patch-based edits continued failing because of the local sandbox helper; one `go run` timed out once and then succeeded on rerun
+- Decisions made: keep the practice functions in `main.go` for now and defer cleaner package separation until later modules
+- Topics to revisit: explain `defer` and short variable declaration with slightly sharper wording during revision
+- Next action: start Day 3, Module 1.3 with arrays vs slices and `append`
 
-### Practice
+### 2026-08-20
 
-- [x] Small exercise completed
-- [x] Exercise reviewed
-- [x] Mistakes documented
-
-### Project work
-
-- [x] Implementation task
-- [ ] Tests added
-- [x] Validation passed
-
-### Completion evidence
-
-- Exercise: completed focused exercises for `maxPriority`, `countByStatus`, `isValidJobName`, `retryDelay`, and `filterCompleted`; answered concept checks on zero values, `:=` vs `=`, `if`, `range`, multiple returns, `defer`, shadowing, and `iota`
-- Files changed: `cmd/goflow/main.go`, `docs/tracker.md`, `docs/learning.md`, `docs/session-log.md`
-- Tests run: `gofmt -w ./cmd/goflow/main.go`, `go vet ./...`, `go test ./...`
-- Concepts demonstrated: zero values; constants vs variables; explicit boolean conditions; safe `range` usage with `_`; multiple returns; deferred cleanup; shadowing; `iota`; simple loop-based algorithms over slices and maps
-- Remaining weaknesses: needs more repetition for precise wording around `:=` vs `=` and the exact purpose of `defer`; no automated tests written yet for the practice functions
-
-## Blockers
-
-- None
-
-## Next Session
-
-- Day and module: Day 3 | Module 1.3 | 2026-08-19
-- Exact next topic: arrays vs slices, slice length/capacity, and how `append` grows slices
-- Exact next exercise: explain the difference between an array and a slice, then inspect how filtering with `append` built a new slice in `filterCompleted`
-- Exact next project task: start an in-memory job model and storage helpers using slices or maps before building the full Module 1.3 job store
+- Topics studied: not started yet for Day 3
+- Work implemented: aligned pacing and tracker structure with one-module-per-day planning; set Day 3 as the active module
+- Tests executed: none yet for Day 3
+- Results: Day 3 resume point is explicit and ready
+- Problems encountered: none yet for Day 3
+- Decisions made: use a clearer tracker format modeled after the MCP tracker
+- Topics to revisit: none yet for Day 3
+- Next action: begin arrays vs slices, then connect that understanding to the in-memory job-store design
