@@ -3,10 +3,10 @@
 ## Current Position
 
 - Current week: Week 1
-- Current module: Day 4 - Module 1.4
-- Current topic: Structs, methods, pointers, and interfaces
-- Current task: Start the Job struct and method-oriented design for GoFlow after completing the Day 3 collection/storage foundations
-- Next milestone: Explain structs vs plain grouped values and begin method-based behavior on the job model
+- Current module: Day 5 - Module 1.5
+- Current topic: Error handling
+- Current task: Start explicit error design for GoFlow after completing the first struct/method/interface increment
+- Next milestone: Introduce `error`, sentinel errors, and wrapped job-store failures without overcomplicating the design
 - Active blockers: None
 
 ## Roadmap Progress
@@ -16,8 +16,8 @@
 | 1 | Module 1.1 | Environment, packages, modules, and tooling | Completed | Runnable Go module with CLI entry point and command dispatch scaffold | `go mod init goflow`; `go run ./cmd/goflow`; `go build ./cmd/goflow`; `go test ./...`; `go vet ./...`; learner explained package vs module and why `package main` + `func main()` is executable | 4 |
 | 2 | Module 1.2 | Language fundamentals | Completed | Core helper functions for max priority, status counting, validation, retry delay, and filtering | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; learner answered theory checks on zero values, `:=` vs `=`, `if`, `range`, `defer`, shadowing, and `iota` | 4 |
 | 3 | Module 1.3 | Arrays, slices, maps, strings, and runes | Completed | In-memory job model and early storage helpers using slices/maps | `gofmt -w ./cmd/goflow/store.go`; `go vet ./...`; `go test ./...`; learner explained arrays vs slices, `append`, shared backing arrays, `copy`, nil vs empty slices, map lookup/delete, `make` vs `new`, and value semantics; implemented in-memory `Store` with create/get/list/update/delete | 4 |
-| 4 | Module 1.4 | Structs, methods, pointers, and interfaces | Not Started | Job struct behavior and first clean boundaries | Resume point set for 2026-08-21 | — |
-| 5 | Module 1.5 | Error handling | Not Started | Explicit job-store errors and wrapped failures | — | — |
+| 4 | Module 1.4 | Structs, methods, pointers, and interfaces | Completed | `Job` methods plus a small orchestration function using small consumer-defined interfaces | `gofmt -w ./cmd/goflow/job.go`; `go vet ./...`; `go test ./...`; learner explained structs, methods, value vs pointer receivers, pointers, implicit interface implementation, small interfaces, constructor functions, and implemented `CanRetry`, `MarkRunning`, and `startJob` | 4 |
+| 5 | Module 1.5 | Error handling | Not Started | Explicit job-store errors and wrapped failures | Resume point set for Friday, August 21, 2026 after Day 4 completion | — |
 | 6 | Module 1.6 | I/O, JSON, files, and configuration | Not Started | Week 1 CLI deliverable with JSON-file persistence | — | — |
 | 7 | Module 2.1 | HTTP servers | Not Started | First `net/http` API endpoints | — | — |
 | 8 | Module 2.2 | Middleware and API reliability | Not Started | Request middleware stack and reliability guards | — | — |
@@ -72,3 +72,14 @@
 - Decisions made: keep the store in `cmd/goflow/store.go` for now and defer package separation until later architectural modules
 - Topics to revisit: stable ordering for `List()` if later CLI output or tests require deterministic ordering
 - Next action: start Day 4, Module 1.4 with structs, methods, pointers, and interfaces on 2026-08-21
+
+### 2026-08-21
+
+- Topics studied: structs, struct literals, methods, value vs pointer receivers, pointers, interfaces, implicit interface implementation, small consumer-defined interfaces, and constructor functions
+- Work implemented: added `cmd/goflow/job.go` with `CanRetry()` and `MarkRunning()` methods; added `cmd/goflow/service.go` with `startJob(store JobReaderWriter, id string) bool`
+- Tests executed: `gofmt -w ./cmd/goflow/job.go`; `go vet ./...`; `go test ./...`
+- Results: Module 1.4 completed; learner connected struct methods, pointer receivers, and small interfaces to the existing in-memory store
+- Problems encountered: the first `job.go` duplicated `Job`/status declarations and contained a status-name typo; both were corrected during review
+- Decisions made: keep orchestration in `service.go`, job behavior in `job.go`, and storage behavior in `store.go` until later package organization modules
+- Topics to revisit: later compare when a value receiver is acceptable for larger structs and when pointer receivers should be used consistently
+- Next action: start Day 5, Module 1.5 with explicit error handling and wrapped store failures

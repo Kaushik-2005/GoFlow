@@ -383,6 +383,150 @@ In Go, arrays are fixed-size values whose length is part of the type, while slic
 - Go Slices: usage and internals: https://go.dev/blog/slices-intro
 - Effective Go: https://go.dev/doc/effective_go
 
+### Day 4: Module 1.4 - Structs, Methods, Pointers, and Interfaces
+
+#### Learning objectives
+
+- Explain why structs are better than loose grouped variables for domain modeling.
+- Use named-field struct literals.
+- Understand methods on structs and when behavior belongs on the type.
+- Distinguish value receivers from pointer receivers.
+- Understand basic pointer meaning and addressability.
+- Understand implicit interface implementation and why interfaces should stay small.
+- Apply these ideas to the `Job` model and store orchestration.
+
+#### Core concepts
+
+- A struct groups related fields into one coherent domain value.
+- Methods attach behavior to a type, making code read more naturally.
+- Value receivers get a copy; pointer receivers can modify the original value.
+- `&value` takes an address; `*ptr` refers to the pointed-to value.
+- Interfaces describe behavior, not data, and are satisfied implicitly.
+- Small interfaces should be defined where they are consumed, not automatically next to every concrete type.
+- Constructor functions like `NewStore()` centralize initialization and protect invariants.
+
+#### How it works
+
+1. Model related state as one struct value instead of several unrelated variables.
+2. Use named-field literals so each value is explicit and order-independent.
+3. Put read-only behavior on the type with methods like `CanRetry()`.
+4. Use pointer receivers for mutating methods like `MarkRunning()`.
+5. Compose small interfaces only when a consumer genuinely needs multiple behaviors.
+6. Use constructor functions to guarantee valid initialization like a non-nil map.
+
+#### Example
+
+```go
+func (j Job) CanRetry() bool {
+	return j.Attempts < j.MaxAttempts
+}
+
+func (j *Job) MarkRunning() {
+	j.Status = StatusRunning
+}
+```
+
+And for small consumer-defined interfaces:
+
+```go
+type JobGetter interface {
+	Get(id string) (Job, bool)
+}
+
+type JobUpdater interface {
+	Update(job Job) bool
+}
+
+type JobReaderWriter interface {
+	JobGetter
+	JobUpdater
+}
+```
+
+#### Role in our project
+
+Day 4 attached the first domain behavior directly to `Job` and used that behavior through a small service-style function:
+
+- `CanRetry()`
+- `MarkRunning()`
+- `startJob(store JobReaderWriter, id string) bool`
+
+This is the first step from “data plus helpers” toward more coherent domain-oriented code.
+
+#### Why it is designed this way
+
+- Structs keep related job state together.
+- Methods make important behavior feel like it belongs to the type.
+- Pointer receivers make mutation explicit.
+- Small interfaces keep consumers honest about what they actually need.
+- `NewStore()` ensures `Store` starts valid instead of relying on every caller to remember map initialization.
+
+#### Alternatives and trade-offs
+
+- Free functions like `canRetry(job)` can work, but `job.CanRetry()` usually makes ownership of behavior clearer.
+- A `map[string]*Job` store would make some mutations feel more direct, but it would also change the value-semantics lesson from Day 3 too early.
+- One large `JobStore` interface is simpler to invent once, but it couples consumers to methods they may not actually need.
+
+#### Failure modes
+
+- Using a value receiver for a mutating method and accidentally changing only a copy.
+- Duplicating type definitions across files in the same package.
+- Using plain `string` for status in one place and `JobStatus` in another, weakening consistency.
+- Defining wide interfaces before there is a real consumer need.
+- Skipping `NewStore()` and writing into a nil map.
+
+#### Common mistakes
+
+- Thinking structs are only about saving declaration effort instead of modeling one coherent value.
+- Forgetting that `job.MarkRunning()` on a local variable works because the variable is addressable.
+- Assuming `Get(id)` returning a `Job` value means store entries update automatically.
+- Making interfaces too broad or placing them with the concrete type by default.
+
+#### Production implications
+
+- Domain methods improve readability when state transitions become more numerous.
+- Receiver choice affects both correctness and performance characteristics.
+- Small interfaces make testing and refactoring easier later.
+- Constructor functions help preserve invariants as types gain more setup requirements.
+
+#### Interview explanation
+
+Go uses structs to model domain data and methods to attach behavior directly to types without classes. Value receivers are appropriate for read-only behavior, while pointer receivers are needed for mutation. Interfaces are satisfied implicitly, and idiomatic Go keeps them small and defines them where they are consumed.
+
+#### Questions for revision
+
+1. Why is a struct better than several loose variables for something like a job?
+   Answer: It keeps related fields together as one coherent domain value, making the data easier to pass around, store, and reason about.
+
+2. Why is a named-field struct literal better than positional values?
+   Answer: Field names make meaning explicit, reduce field-order mistakes, and keep the code readable as the struct grows.
+
+3. Why does `MarkRunning()` need a pointer receiver while `CanRetry()` does not?
+   Answer: `MarkRunning()` mutates the actual `Job`, while `CanRetry()` only reads state.
+
+4. Why do we still need `store.Update(job)` after `job.MarkRunning()` in `startJob`?
+   Answer: `Get(id)` returns a `Job` value copy; `MarkRunning()` changes that local copy, and `Update` writes it back to the map.
+
+5. Why is a small interface like `JobGetter` better than a large `JobStore` interface for a consumer that only fetches jobs?
+   Answer: The consumer depends only on the behavior it actually needs, reducing coupling and keeping contracts clearer.
+
+#### Active recall review
+
+1. Question: Why does `job.MarkRunning()` compile even though `MarkRunning()` has a pointer receiver and `job` was returned as a value?
+   Answer: Because `job` is an addressable local variable, so Go can automatically take its address for the method call.
+
+2. Question: Why is `NewStore()` better than forcing every caller to initialize `jobs` manually?
+   Answer: It centralizes initialization and guarantees the map is usable, preventing nil-map write panics.
+
+3. Question: When should interfaces usually be defined in Go?
+   Answer: Near the consumer that needs the behavior, not automatically near the concrete type.
+
+#### References
+
+- Effective Go: https://go.dev/doc/effective_go
+- A Tour of Go methods and interfaces: https://go.dev/tour/methods/1
+- Go FAQ on interfaces: https://go.dev/doc/faq#interfaces
+
 ## Module 2: HTTP, Architecture, Databases, and Testing
 
 ### Day 7: Module 2.1 - Building HTTP Servers
@@ -422,4 +566,5 @@ In Go, arrays are fixed-size values whose length is part of the type, while slic
 ### Day 23: Module 4.5 - Containers and Configuration
 
 ### Day 24: Module 4.6 - CI and Engineering Workflow
+
 

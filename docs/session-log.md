@@ -175,3 +175,61 @@
 ### Next session
 
 - Start Day 4, Module 1.4 with structs, methods, pointers, and interfaces on 2026-08-21
+## 2026-08-21 — Module 1.4 completion
+
+### Topics covered
+
+- Structs and named-field struct literals
+- Methods on structs
+- Value vs pointer receivers
+- Pointers and addressability
+- Interfaces and implicit implementation
+- Small consumer-defined interfaces
+- Constructor functions
+- Orchestration with `Job` methods plus store behavior
+
+### Work completed
+
+- Resumed from the exact Day 4 tracker position
+- Taught and checked the main struct/method/pointer/interface concepts in sequence
+- Reviewed and corrected the first `job.go` implementation
+- Added `CanRetry()` and `MarkRunning()` to `Job`
+- Added `startJob(store JobReaderWriter, id string) bool` in `service.go`
+- Marked Module 1.4 complete and set Module 1.5 as the next resume point
+
+### Commands run
+
+- `Get-Content -LiteralPath 'Go_Industry_Roadmap_4_Weeks.md'`
+- `Get-Content -LiteralPath 'docs/tracker.md'`
+- `Get-Content -LiteralPath 'docs/learning.md'`
+- `Get-Content -LiteralPath 'docs/session-log.md'`
+- `Get-Content -LiteralPath 'cmd/goflow/main.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/store.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/job.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/service.go'`
+- `gofmt -w ./cmd/goflow/job.go`
+- `go vet ./...`
+- `go test ./...`
+
+### Problems encountered
+
+- The first `job.go` duplicated `Job` and status declarations already present in `store.go`
+- `MarkRunning()` initially used the misspelled `StausRunning`, which prevented compilation until corrected
+- The local sandbox helper still blocked patch-based edits, so record updates continued through direct file writes outside the sandbox
+
+### What I understood well
+
+- Structs keep related job data together as one coherent value
+- `CanRetry()` belongs on `Job` and can use a value receiver because it only reads state
+- `MarkRunning()` needs a pointer receiver because it mutates the actual job
+- Small interfaces like `JobGetter` and `JobUpdater` are better than large premature store interfaces
+- `startJob` still needs `Update` because `Get` returns a value copy
+
+### What needs revision
+
+- Revisit when pointer receivers should be used consistently across a type even for some read-only methods
+- Revisit how receiver choice interacts with larger structs and mutation-heavy APIs
+
+### Next session
+
+- Start Day 5, Module 1.5 with explicit error handling and wrapped store failures
