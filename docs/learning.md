@@ -527,6 +527,159 @@ Go uses structs to model domain data and methods to attach behavior directly to 
 - A Tour of Go methods and interfaces: https://go.dev/tour/methods/1
 - Go FAQ on interfaces: https://go.dev/doc/faq#interfaces
 
+### Day 5: Module 1.5 - Error Handling
+
+#### Learning objectives
+
+- Explain what the `error` interface is.
+- Understand why Go returns errors instead of using exceptions for normal failures.
+- Use `errors.New` for sentinel errors.
+- Understand wrapping with `%w`.
+- Use `errors.Is` for known error conditions.
+- Understand when custom error types plus `errors.As` are better than sentinel errors.
+- Apply explicit error design to the store, service, and CLI boundary.
+
+#### Core concepts
+
+- `error` is an interface with an `Error() string` method.
+- `nil` means no error occurred.
+- In Go, normal failures are usually returned as values that callers inspect explicitly.
+- Sentinel errors represent shared recognizable conditions such as `ErrJobNotFound`.
+- `fmt.Errorf(... %w ...)` adds context while preserving the original error in the chain.
+- `errors.Is` checks for a known error value through wrapped layers.
+- `errors.As` extracts a matching custom error type from the chain.
+- Error strings are for humans; sentinel values and custom types are for program logic.
+
+#### How it works
+
+1. Create simple shared error conditions with `errors.New` when callers need to recognize them.
+2. Return `nil` when operations succeed and a non-nil error when they fail.
+3. Add context with `%w` so higher layers can still inspect the underlying error.
+4. Use `errors.Is(err, ErrJobNotFound)` for yes/no domain conditions.
+5. Introduce a custom error type only when callers need extra structured details beyond the condition itself.
+6. Let lower layers return and wrap errors; let higher layers decide user-facing behavior.
+
+#### Example
+
+```go
+var ErrJobNotFound = errors.New("job not found")
+
+func (s *Store) Get(id string) (Job, error) {
+	job, ok := s.jobs[id]
+	if !ok {
+		return Job{}, ErrJobNotFound
+	}
+	return job, nil
+}
+```
+
+And wrapping:
+
+```go
+return fmt.Errorf("start job %q: %w", id, err)
+```
+
+And a custom typed error:
+
+```go
+type InvalidJobStatusError struct {
+	JobID  string
+	Status JobStatus
+}
+
+func (e InvalidJobStatusError) Error() string {
+	return fmt.Sprintf("cannot start job %s from status %s", e.JobID, e.Status)
+}
+```
+
+#### Role in our project
+
+Day 5 upgraded the GoFlow code from boolean failure signals to explicit error values:
+
+- `ErrJobNotFound`
+- `ErrJobAlreadyExists`
+- `Get(id) (Job, error)`
+- `Update(job) error`
+- `Delete(id) error`
+- `startJob(...) error`
+- `InvalidJobStatusError`
+- CLI-side `errors.Is(err, ErrJobNotFound)` handling in `main`
+
+This is the first real error-flow design in the project and sets up later HTTP, file, and database behavior.
+
+#### Why it is designed this way
+
+- Sentinel errors keep common domain conditions stable and recognizable.
+- `%w` preserves the underlying cause while still adding useful context.
+- Higher-level code can make better user-facing decisions when lower-level code returns structured error information.
+- Custom error types are used sparingly so the design stays simple until richer error data is truly necessary.
+
+#### Alternatives and trade-offs
+
+- Returning `bool` is shorter but loses failure meaning.
+- Comparing `err.Error()` strings is easy at first but brittle and hostile to refactoring.
+- Making every error a custom type is too heavy for simple yes/no conditions like “not found.”
+
+#### Failure modes
+
+- Returning fresh `errors.New("job not found")` values everywhere instead of one shared sentinel.
+- Using `%v` instead of `%w` and losing the original error chain.
+- Branching on error message text instead of `errors.Is`.
+- Using a custom error type when a sentinel error would be simpler.
+- Handling user-facing output too low in the stack instead of at the boundary.
+
+#### Common mistakes
+
+- Saying `nil` is “not an error” without stating that it means the error result is absent.
+- Treating `%w` as if it were only string formatting.
+- Reaching for `errors.As` when `errors.Is` is the right tool.
+- Putting boundary-specific messaging inside lower-level functions like `startJob`.
+
+#### Production implications
+
+- Explicit error values make failure paths auditable in services and backends.
+- Wrapped errors preserve debugging context without losing machine-readable meaning.
+- Sentinel errors help map domain conditions cleanly to CLI, HTTP, and test behavior.
+- Custom typed errors support richer policies once state machines and validation become more complex.
+
+#### Interview explanation
+
+Go represents normal failures with returned `error` values rather than exceptions. Sentinel errors such as `ErrJobNotFound` are good for recognizable yes/no conditions and are checked with `errors.Is`. When extra structured details are needed, a custom error type can be returned and extracted with `errors.As`. Wrapping with `%w` adds context while preserving the underlying error chain.
+
+#### Questions for revision
+
+1. Why is `ErrJobNotFound` better than checking for the text `"job not found"`?
+   Answer: It gives the program one stable error condition to branch on with `errors.Is`, while message text is brittle and may change or be wrapped.
+
+2. Why is `%w` better than `%v` when wrapping an error you may want to inspect later?
+   Answer: `%w` preserves the original error in the chain so `errors.Is` and `errors.As` continue to work; `%v` only formats text.
+
+3. When should you prefer a sentinel error over a custom error type?
+   Answer: When callers only need to recognize a simple yes/no condition and do not need extra structured data.
+
+4. When is a custom error type a better fit?
+   Answer: When callers need structured details such as job ID or current status to decide what to do next.
+
+5. Why should `errors.Is` checks for user-facing behavior usually happen near a boundary like `main`?
+   Answer: Lower layers should return and wrap errors; higher layers should decide how to present or map them.
+
+#### Active recall review
+
+1. Question: Why does `errors.Is(err, ErrJobNotFound)` still work after `startJob(...)` wraps the error with context?
+   Answer: Because `startJob` uses `%w`, which preserves the original error in the chain.
+
+2. Question: Why are `ErrJobNotFound` and `ErrJobAlreadyExists` still better as sentinel errors than as custom types right now?
+   Answer: They are simple recognizable conditions; callers do not need extra structured data to handle them.
+
+3. Question: Why is `InvalidJobStatusError` a reasonable custom error type?
+   Answer: Because the caller may need to know which job and which current status caused the invalid transition.
+
+#### References
+
+- Effective Go: https://go.dev/doc/effective_go
+- Go 1.13 errors blog post: https://go.dev/blog/go1.13-errors
+- Package errors: https://pkg.go.dev/errors
+
 ## Module 2: HTTP, Architecture, Databases, and Testing
 
 ### Day 7: Module 2.1 - Building HTTP Servers
@@ -566,5 +719,6 @@ Go uses structs to model domain data and methods to attach behavior directly to 
 ### Day 23: Module 4.5 - Containers and Configuration
 
 ### Day 24: Module 4.6 - CI and Engineering Workflow
+
 
 

@@ -3,10 +3,10 @@
 ## Current Position
 
 - Current week: Week 1
-- Current module: Day 5 - Module 1.5
-- Current topic: Error handling
-- Current task: Start explicit error design for GoFlow after completing the first struct/method/interface increment
-- Next milestone: Introduce `error`, sentinel errors, and wrapped job-store failures without overcomplicating the design
+- Current module: Day 6 - Module 1.6
+- Current topic: I/O, JSON, files, and configuration
+- Current task: Start the Week 1 CLI deliverable with JSON-file persistence after completing the core error-handling patterns
+- Next milestone: Use file and JSON handling to persist jobs for the first real CLI workflow
 - Active blockers: None
 
 ## Roadmap Progress
@@ -17,8 +17,8 @@
 | 2 | Module 1.2 | Language fundamentals | Completed | Core helper functions for max priority, status counting, validation, retry delay, and filtering | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; learner answered theory checks on zero values, `:=` vs `=`, `if`, `range`, `defer`, shadowing, and `iota` | 4 |
 | 3 | Module 1.3 | Arrays, slices, maps, strings, and runes | Completed | In-memory job model and early storage helpers using slices/maps | `gofmt -w ./cmd/goflow/store.go`; `go vet ./...`; `go test ./...`; learner explained arrays vs slices, `append`, shared backing arrays, `copy`, nil vs empty slices, map lookup/delete, `make` vs `new`, and value semantics; implemented in-memory `Store` with create/get/list/update/delete | 4 |
 | 4 | Module 1.4 | Structs, methods, pointers, and interfaces | Completed | `Job` methods plus a small orchestration function using small consumer-defined interfaces | `gofmt -w ./cmd/goflow/job.go`; `go vet ./...`; `go test ./...`; learner explained structs, methods, value vs pointer receivers, pointers, implicit interface implementation, small interfaces, constructor functions, and implemented `CanRetry`, `MarkRunning`, and `startJob` | 4 |
-| 5 | Module 1.5 | Error handling | Not Started | Explicit job-store errors and wrapped failures | Resume point set for Friday, August 21, 2026 after Day 4 completion | — |
-| 6 | Module 1.6 | I/O, JSON, files, and configuration | Not Started | Week 1 CLI deliverable with JSON-file persistence | — | — |
+| 5 | Module 1.5 | Error handling | Completed | Sentinel errors, wrapped errors, and one custom typed error applied to store/service code | `gofmt -w ./cmd/goflow/store.go ./cmd/goflow/service.go ./cmd/goflow/job.go ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow process job-123`; learner explained `error`, `errors.New`, sentinel errors, `%w`, `errors.Is`, custom error types, and `errors.As` | 4 |
+| 6 | Module 1.6 | I/O, JSON, files, and configuration | Not Started | Week 1 CLI deliverable with JSON-file persistence | Resume point set for Saturday, August 22, 2026 after Day 5 completion | — |
 | 7 | Module 2.1 | HTTP servers | Not Started | First `net/http` API endpoints | — | — |
 | 8 | Module 2.2 | Middleware and API reliability | Not Started | Request middleware stack and reliability guards | — | — |
 | 9 | Module 2.3 | Project organization and architecture | Not Started | Clear layered structure for API and worker code | — | — |
@@ -83,3 +83,14 @@
 - Decisions made: keep orchestration in `service.go`, job behavior in `job.go`, and storage behavior in `store.go` until later package organization modules
 - Topics to revisit: later compare when a value receiver is acceptable for larger structs and when pointer receivers should be used consistently
 - Next action: start Day 5, Module 1.5 with explicit error handling and wrapped store failures
+
+### 2026-08-22
+
+- Topics studied: the `error` interface, returned errors vs exceptions, `errors.New`, sentinel errors, wrapping with `%w`, `errors.Is`, custom error types, and `errors.As`
+- Work implemented: added `ErrJobNotFound` and `ErrJobAlreadyExists`; updated `Store` methods to return errors; updated `startJob` to wrap errors and reject non-pending jobs with `InvalidJobStatusError`; updated the `process` CLI path to use `errors.Is(err, ErrJobNotFound)` at the boundary
+- Tests executed: `gofmt -w ./cmd/goflow/store.go ./cmd/goflow/service.go`; `gofmt -w ./cmd/goflow/job.go`; `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow process job-123`
+- Results: Module 1.5 completed; learner can distinguish sentinel errors from custom typed errors and knows when to use `errors.Is` vs `errors.As`
+- Problems encountered: patch-based edits still required direct file rewrites outside the sandbox; `JobReaderWriter` had been referenced earlier without a definition and was added as part of the Day 5 cleanup
+- Decisions made: keep `ErrJobNotFound` and `ErrJobAlreadyExists` as sentinel errors; use a custom error type only for richer state-transition failures like invalid job status
+- Topics to revisit: later show `errors.As` at a boundary with a real branch on `InvalidJobStatusError` once the CLI/API path grows
+- Next action: start Day 6, Module 1.6 with file I/O, JSON encoding, and persistence on 2026-08-22

@@ -2,6 +2,9 @@ package main
 
 import "errors"
 
+var ErrJobNotFound = errors.New("job not found")
+var ErrJobAlreadyExists = errors.New("job already exists")
+
 type JobStatus string
 
 const (
@@ -32,16 +35,20 @@ func NewStore() *Store {
 
 func (s *Store) Create(job Job) error {
 	if _, exists := s.jobs[job.ID]; exists {
-		return errors.New("job already exists")
+		return ErrJobAlreadyExists
 	}
 
 	s.jobs[job.ID] = job
 	return nil
 }
 
-func (s *Store) Get(id string) (Job, bool) {
+func (s *Store) Get(id string) (Job, error) {
 	job, ok := s.jobs[id]
-	return job, ok
+	if !ok {
+		return Job{}, ErrJobNotFound
+	}
+
+	return job, nil
 }
 
 func (s *Store) List() []Job {
@@ -54,20 +61,20 @@ func (s *Store) List() []Job {
 	return jobs
 }
 
-func (s *Store) Update(job Job) bool {
+func (s *Store) Update(job Job) error {
 	if _, exists := s.jobs[job.ID]; !exists {
-		return false
+		return ErrJobNotFound
 	}
 
 	s.jobs[job.ID] = job
-	return true
+	return nil
 }
 
-func (s *Store) Delete(id string) bool {
+func (s *Store) Delete(id string) error {
 	if _, exists := s.jobs[id]; !exists {
-		return false
+		return ErrJobNotFound
 	}
 
 	delete(s.jobs, id)
-	return true
+	return nil
 }

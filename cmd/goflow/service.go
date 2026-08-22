@@ -1,12 +1,30 @@
 package main
 
-func startJob(store JobReaderWriter, id string) bool {
-	job, ok := store.Get(id)
-	if !ok {
-		return false
+import "fmt"
+
+type JobReaderWriter interface {
+	Get(id string) (Job, error)
+	Update(job Job) error
+}
+
+func startJob(store JobReaderWriter, id string) error {
+	job, err := store.Get(id)
+	if err != nil {
+		return fmt.Errorf("start job %q: %w", id, err)
+	}
+
+	if job.Status != StatusPending {
+		return InvalidJobStatusError{
+			JobID:  job.ID,
+			Status: job.Status,
+		}
 	}
 
 	job.MarkRunning()
 
-	return store.Update(job)
+	if err := store.Update(job); err != nil {
+		return fmt.Errorf("start job %q: %w", id, err)
+	}
+
+	return nil
 }

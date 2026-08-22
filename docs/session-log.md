@@ -233,3 +233,66 @@
 ### Next session
 
 - Start Day 5, Module 1.5 with explicit error handling and wrapped store failures
+## 2026-08-22 — Module 1.5 completion
+
+### Topics covered
+
+- The `error` interface
+- Returned errors versus exceptions
+- `errors.New` and sentinel errors
+- Wrapping with `%w`
+- `errors.Is` for known conditions
+- Custom error types and `errors.As`
+- Applying explicit error handling to store, service, and CLI boundaries
+
+### Work completed
+
+- Resumed from the exact Day 5 tracker position
+- Taught and checked the main error-handling concepts in sequence
+- Upgraded store methods from boolean failure signals to explicit error returns
+- Added `ErrJobNotFound` and `ErrJobAlreadyExists`
+- Added `InvalidJobStatusError`
+- Updated `startJob(...)` to wrap errors and reject non-pending status transitions
+- Updated the `process` CLI path to branch on `errors.Is(err, ErrJobNotFound)`
+- Marked Module 1.5 complete and set Module 1.6 as the next resume point
+
+### Commands run
+
+- `Get-Content -LiteralPath 'Go_Industry_Roadmap_4_Weeks.md'`
+- `Get-ChildItem -Force`
+- `Get-Content -LiteralPath 'docs/tracker.md'`
+- `Get-Content -LiteralPath 'docs/learning.md'`
+- `Get-Content -LiteralPath 'docs/session-log.md'`
+- `Get-Content -LiteralPath 'cmd/goflow/store.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/job.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/service.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/main.go'`
+- `gofmt -w ./cmd/goflow/store.go ./cmd/goflow/service.go`
+- `gofmt -w ./cmd/goflow/job.go`
+- `gofmt -w ./cmd/goflow/main.go`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow process job-123`
+
+### Problems encountered
+
+- Patch-based edits still required direct file rewrites outside the sandbox because the local sandbox helper continued to fail
+- `JobReaderWriter` had been referenced earlier without a concrete declaration and was added during the Day 5 cleanup
+- The workspace still contains `goflow.exe`, which is ignored by `.gitignore` but remains in the working directory
+
+### What I understood well
+
+- `nil` as an `error` result means no error occurred
+- Sentinel errors are better than checking message text for conditions like not found and already exists
+- `%w` preserves the wrapped error for `errors.Is` and `errors.As`
+- `errors.Is` is the right tool for sentinel errors in the current GoFlow design
+- Custom error types plus `errors.As` are better when structured details are needed
+
+### What needs revision
+
+- Add a real boundary example for `errors.As` later, not just the type definition and return path
+- Revisit whether the `process` command should construct a fresh empty store or use persisted state once Day 6 adds file-based storage
+
+### Next session
+
+- Start Day 6, Module 1.6 with file I/O, JSON encoding, and JSON-file persistence for the CLI on 2026-08-22

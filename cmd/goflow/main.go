@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 )
@@ -92,6 +93,18 @@ func main() {
 		if !ok {
 			return
 		}
+
+		store := NewStore()
+		err := startJob(store, jobID)
+		if err != nil {
+			if errors.Is(err, ErrJobNotFound) {
+				fmt.Printf("job not found: %s\n", jobID)
+				return
+			}
+			fmt.Printf("failed to start job %s: %v\n", jobID, err)
+			return
+		}
+
 		fmt.Printf("processing job: %s\n", jobID)
 	default:
 		fmt.Printf("unknown command: %s\n", command)
