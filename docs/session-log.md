@@ -296,3 +296,61 @@
 ### Next session
 
 - Start Day 6, Module 1.6 with file I/O, JSON encoding, and JSON-file persistence for the CLI on 2026-08-22
+
+## 2026-08-23 — Module 1.6 completion
+
+### Topics covered
+
+- `io.Reader` and `io.Writer`
+- `os.ReadFile` and `os.WriteFile`
+- `encoding/json`
+- JSON struct tags
+- `Marshal` versus `Unmarshal`
+- Missing-file handling with `errors.Is(err, os.ErrNotExist)`
+- JSON-file persistence in the CLI
+- Real boundary use of `errors.As` for invalid job status
+
+### Work completed
+
+- Added `cmd/goflow/persistence.go` with `saveJobs(...)` and `loadJobs(...)`
+- Added `Store.Save(...)` and `LoadStore(...)`
+- Added JSON tags to the `Job` struct
+- Wired `create`, `list`, `get`, and `process` to persisted `jobs.json` state
+- Added CLI handling for `InvalidJobStatusError` using `errors.As(...)`
+- Completed the Week 1 CLI deliverable with persistence across runs
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/store.go ./cmd/goflow/persistence.go`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow create email`
+- `go run ./cmd/goflow list`
+- `go run ./cmd/goflow get job-1`
+- `go run ./cmd/goflow process job-1`
+- `go run ./cmd/goflow process job-999`
+- `go run ./cmd/goflow process job-1`
+
+### Problems encountered
+
+- The Windows sandbox helper still blocked normal patch-based edits, so direct rewrites were needed for code changes
+- JSON initially used Go field names until explicit struct tags were added
+- `list` initially used `NewStore()` instead of `LoadStore(...)`, which would have ignored persisted state
+
+### What I understood well
+
+- Why `io.Reader` is better than `*os.File` when only read behavior is needed
+- Why `json.Unmarshal(...)` needs a pointer destination
+- Why a missing `jobs.json` file should mean an empty job list in this stage of the project
+- Why map iteration order is not stable in Go
+- When `errors.As(...)` is the right tool instead of `errors.Is(...)`
+
+### What needs revision
+
+- Revisit stable ordering if CLI output or tests later need deterministic job order
+- Replace the temporary sequential ID generation strategy in a later module
+- Revisit whether `Payload` should stay `null`, default to empty bytes, or evolve into a typed payload model later
+
+### Next session
+
+- Start Day 7, Module 2.1 with `net/http` handlers on 2026-08-24

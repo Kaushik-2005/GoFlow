@@ -2,11 +2,11 @@
 
 ## Current Position
 
-- Current week: Week 1
-- Current module: Day 6 - Module 1.6
-- Current topic: I/O, JSON, files, and configuration
-- Current task: Start the Week 1 CLI deliverable with JSON-file persistence after completing the core error-handling patterns
-- Next milestone: Use file and JSON handling to persist jobs for the first real CLI workflow
+- Current week: Week 2
+- Current module: Day 7 - Module 2.1
+- Current topic: HTTP servers with `net/http`
+- Current task: Start Day 7 by moving from CLI-only workflows to the first HTTP handler layer on 2026-08-24
+- Next milestone: Serve the first GoFlow HTTP endpoints with `net/http` while preserving the current job store behavior
 - Active blockers: None
 
 ## Roadmap Progress
@@ -18,7 +18,7 @@
 | 3 | Module 1.3 | Arrays, slices, maps, strings, and runes | Completed | In-memory job model and early storage helpers using slices/maps | `gofmt -w ./cmd/goflow/store.go`; `go vet ./...`; `go test ./...`; learner explained arrays vs slices, `append`, shared backing arrays, `copy`, nil vs empty slices, map lookup/delete, `make` vs `new`, and value semantics; implemented in-memory `Store` with create/get/list/update/delete | 4 |
 | 4 | Module 1.4 | Structs, methods, pointers, and interfaces | Completed | `Job` methods plus a small orchestration function using small consumer-defined interfaces | `gofmt -w ./cmd/goflow/job.go`; `go vet ./...`; `go test ./...`; learner explained structs, methods, value vs pointer receivers, pointers, implicit interface implementation, small interfaces, constructor functions, and implemented `CanRetry`, `MarkRunning`, and `startJob` | 4 |
 | 5 | Module 1.5 | Error handling | Completed | Sentinel errors, wrapped errors, and one custom typed error applied to store/service code | `gofmt -w ./cmd/goflow/store.go ./cmd/goflow/service.go ./cmd/goflow/job.go ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow process job-123`; learner explained `error`, `errors.New`, sentinel errors, `%w`, `errors.Is`, custom error types, and `errors.As` | 4 |
-| 6 | Module 1.6 | I/O, JSON, files, and configuration | Not Started | Week 1 CLI deliverable with JSON-file persistence | Resume point set for Saturday, August 22, 2026 after Day 5 completion | — |
+| 6 | Module 1.6 | I/O, JSON, files, and configuration | Completed | Week 1 CLI deliverable with JSON-file persistence | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/store.go ./cmd/goflow/persistence.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow list`; `go run ./cmd/goflow get job-1`; `go run ./cmd/goflow process job-1`; learner explained `io.Reader` vs `*os.File`, JSON tags, `Marshal` vs `Unmarshal`, missing-file behavior, and map iteration order | 4 |
 | 7 | Module 2.1 | HTTP servers | Not Started | First `net/http` API endpoints | — | — |
 | 8 | Module 2.2 | Middleware and API reliability | Not Started | Request middleware stack and reliability guards | — | — |
 | 9 | Module 2.3 | Project organization and architecture | Not Started | Clear layered structure for API and worker code | — | — |
@@ -94,3 +94,15 @@
 - Decisions made: keep `ErrJobNotFound` and `ErrJobAlreadyExists` as sentinel errors; use a custom error type only for richer state-transition failures like invalid job status
 - Topics to revisit: later show `errors.As` at a boundary with a real branch on `InvalidJobStatusError` once the CLI/API path grows
 - Next action: start Day 6, Module 1.6 with file I/O, JSON encoding, and persistence on 2026-08-22
+
+
+### 2026-08-23
+
+- Topics studied: `io.Reader` and `io.Writer`, file helpers from `os`, `encoding/json`, struct tags, `Marshal` vs `Unmarshal`, missing-file handling, JSON-file persistence, and a real `errors.As` boundary case
+- Work implemented: added `cmd/goflow/persistence.go` with `saveJobs` and `loadJobs`; added `Store.Save(...)` and `LoadStore(...)`; added JSON tags to `Job`; wired `create`, `list`, `get`, and `process` in `cmd/goflow/main.go` to persisted `jobs.json` state
+- Tests executed: `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/store.go ./cmd/goflow/persistence.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow list`; `go run ./cmd/goflow get job-1`; `go run ./cmd/goflow process job-1`
+- Results: Module 1.6 completed; the Week 1 CLI deliverable now persists jobs to `jobs.json` across runs and reports invalid status transitions with `errors.As`
+- Problems encountered: map-backed listing order remained non-deterministic by design; struct tags first defaulted to Go field names until explicit JSON tags were added; the Windows sandbox helper still required direct unsandboxed file rewrites for edits
+- Decisions made: treat a missing `jobs.json` file as an empty job list rather than an error; keep persistence in a dedicated helper file while the project remains in `package main`
+- Topics to revisit: later decide whether CLI list output should be sorted for deterministic UX and testing; later replace the temporary ID generation strategy with a safer identifier approach
+- Next action: start Day 7, Module 2.1 with `net/http` handlers on 2026-08-24

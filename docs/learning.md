@@ -680,6 +680,127 @@ Go represents normal failures with returned `error` values rather than exception
 - Go 1.13 errors blog post: https://go.dev/blog/go1.13-errors
 - Package errors: https://pkg.go.dev/errors
 
+### Day 6: Module 1.6 - I/O, JSON, Files, and Configuration
+
+#### Concept
+
+This module moved GoFlow from an in-memory-only CLI to a CLI that persists jobs in `jobs.json` across separate runs. The key concepts were `io.Reader` and `io.Writer`, file helpers from `os`, `encoding/json`, JSON struct tags, `Marshal` vs `Unmarshal`, missing-file handling, and using `defer` to clean up resources when working with opened files.
+
+#### Why it matters
+
+A program becomes useful when it can cross the process boundary. Files and JSON are the first simple persistence layer. They teach how Go moves data between memory and the outside world, which directly prepares for HTTP request bodies, configuration loading, logs, and database drivers.
+
+#### Mental model
+
+- `io.Reader` and `io.Writer` represent behavior, not one concrete type.
+- A file is one concrete thing that can implement those behaviors.
+- `json.Marshal` converts a Go value into JSON bytes.
+- `json.Unmarshal` converts JSON bytes into a Go value and needs a pointer to write into.
+- A missing persistence file can be a normal startup condition rather than a failure.
+- The in-memory `Store` remains the owner of job data; persistence helpers translate between `[]Job` and file bytes.
+
+#### Syntax and APIs
+
+```go
+data, err := json.MarshalIndent(jobs, "", "  ")
+if err != nil {
+	return fmt.Errorf("save jobs: %w", err)
+}
+
+if err := os.WriteFile(filename, data, 0644); err != nil {
+	return fmt.Errorf("save jobs: %w", err)
+}
+```
+
+```go
+data, err := os.ReadFile(filename)
+if err != nil {
+	if errors.Is(err, os.ErrNotExist) {
+		return []Job{}, nil
+	}
+	return nil, fmt.Errorf("load jobs: %w", err)
+}
+
+var jobs []Job
+if err := json.Unmarshal(data, &jobs); err != nil {
+	return nil, fmt.Errorf("load jobs: %w", err)
+}
+```
+
+```go
+type Job struct {
+	ID          string    `json:"id"`
+	Type        string    `json:"type"`
+	Payload     []byte    `json:"payload"`
+	Status      JobStatus `json:"status"`
+	Attempts    int       `json:"attempts"`
+	MaxAttempts int       `json:"max_attempts"`
+}
+```
+
+#### Idiomatic Go points
+
+- Accept the smallest behavior needed, such as `io.Reader`, instead of over-coupling to `*os.File`.
+- Keep file/JSON logic in focused helpers rather than duplicating it inside every CLI branch.
+- Use `%w` so the error chain stays inspectable.
+- Handle user-facing branching at the boundary in `main`, not deep inside helpers.
+- Return an empty slice and `nil` when a missing file is a normal condition.
+
+#### Python comparison
+
+- `defer file.Close()` plays a similar role to `with open(...) as f:`.
+- `json.Unmarshal(data, &jobs)` is more explicit than Python's `json.loads(...)` because Go requires a typed destination to decode into.
+- Go does not rely on truthiness for error or existence checks; it returns explicit values and errors.
+
+#### Common mistakes
+
+- Forgetting that only exported struct fields are marshaled by `encoding/json`.
+- Assuming a missing file must always be treated as an error.
+- Forgetting to assign the result of persistence loads back into a usable in-memory structure.
+- Using `NewStore()` in read paths like `list` or `get`, which would ignore persisted data.
+- Expecting stable job order from a map-backed `List()` result.
+
+#### Project application
+
+Day 6 added real JSON-file persistence to GoFlow:
+
+- `cmd/goflow/persistence.go` now contains `saveJobs(...)` and `loadJobs(...)`.
+- `cmd/goflow/store.go` now contains `Store.Save(...)` and `LoadStore(...)`.
+- `cmd/goflow/main.go` now loads persisted state for `create`, `list`, `get`, and `process`.
+- `process` now demonstrates a real `errors.As(...)` boundary by extracting `InvalidJobStatusError` and printing a specific message.
+
+The current CLI flow now survives separate runs through `jobs.json`.
+
+#### Production implications
+
+- File I/O introduces real failure modes such as missing files, malformed JSON, and write failures.
+- Stable JSON field names matter once other tools or services read the same data.
+- Non-deterministic map order becomes important once tests or user-facing output expect stable ordering.
+- The current ID generation strategy using `len(store.List())+1` is good enough for learning but not safe for production.
+
+#### Interview questions
+
+1. Why would a function prefer `io.Reader` over `*os.File`?
+2. Why does `json.Unmarshal(...)` require a pointer?
+3. Why are struct tags useful even when exported field names already work?
+4. When is a missing file a normal condition instead of an error?
+5. Why is Go map iteration order relevant once you persist and display data?
+
+#### References
+
+- Package io: https://pkg.go.dev/io
+- Package os: https://pkg.go.dev/os
+- Package encoding/json: https://pkg.go.dev/encoding/json
+- Effective Go: https://go.dev/doc/effective_go
+
+#### My questions and corrections
+
+- `io.Reader` is preferred over `*os.File` when a function only needs read behavior, because it keeps the code reusable across files, buffers, and network bodies.
+- `json:"id"` does not merely “make it a JSON field”; it controls the exact JSON key name used for that struct field.
+- Returning `[]Job{}, nil` for a missing file is correct here because “no file yet” means “no jobs saved yet,” not “job not found.”
+- The list output order is unstable because `Store.List()` ranges over a Go map.
+- `errors.As(...)` is useful when the caller needs structured details like `JobID` and `Status`, not just a yes/no condition.
+
 ## Module 2: HTTP, Architecture, Databases, and Testing
 
 ### Day 7: Module 2.1 - Building HTTP Servers
@@ -719,6 +840,7 @@ Go represents normal failures with returned `error` values rather than exception
 ### Day 23: Module 4.5 - Containers and Configuration
 
 ### Day 24: Module 4.6 - CI and Engineering Workflow
+
 
 
 

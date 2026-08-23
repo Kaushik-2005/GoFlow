@@ -6,6 +6,8 @@ import (
 	"os"
 )
 
+const jobsFile = "jobs.json"
+
 func maxPriority(priorities []int) int {
 	max := priorities[0]
 
@@ -75,33 +77,109 @@ func main() {
 
 	switch command {
 	case "list":
-		fmt.Println("listing jobs")
+		store, err := LoadStore(jobsFile)
+		if err != nil {
+			fmt.Printf("failed to load jobs: %v\n", err)
+			return
+		}
+
+		jobs := store.List()
+		if len(jobs) == 0 {
+			fmt.Println("no jobs found")
+			return
+		}
+		for _, job := range jobs {
+			fmt.Printf("%s %s %s\n", job.ID, job.Type, job.Status)
+		}
 	case "create":
 		jobType, ok := requireArg(os.Args, 2, "missing job type")
 		if !ok {
 			return
 		}
-		fmt.Printf("creating job of type: %s\n", jobType)
+
+		store, err := LoadStore(jobsFile)
+		if err != nil {
+			fmt.Printf("failed to load jobs: %v\n", err)
+			return
+		}
+
+		job := Job{
+			ID:          fmt.Sprintf("job-%d", len(store.List())+1),
+			Type:        jobType,
+			Status:      StatusPending,
+			Attempts:    0,
+			MaxAttempts: 3,
+		}
+
+		if err := store.Create(job); err != nil {
+			if errors.Is(err, ErrJobAlreadyExists) {
+				fmt.Printf("job already exists: %s\n", job.ID)
+				return
+			}
+			fmt.Printf("failed to create job: %v\n", err)
+			return
+		}
+
+		if err := store.Save(jobsFile); err != nil {
+			fmt.Printf("failed to save jobs: %v\n", err)
+			return
+		}
+
+		fmt.Printf("created job: %s\n", job.ID)
 	case "get":
 		jobID, ok := requireArg(os.Args, 2, "missing job id")
 		if !ok {
 			return
 		}
-		fmt.Printf("getting job: %s\n", jobID)
+
+		store, err := LoadStore(jobsFile)
+		if err != nil {
+			fmt.Printf("failed to load jobs: %v\n", err)
+			return
+		}
+
+		job, err := store.Get(jobID)
+		if err != nil {
+			if errors.Is(err, ErrJobNotFound) {
+				fmt.Printf("job not found: %s\n", jobID)
+				return
+			}
+			fmt.Printf("failed to get job %s: %v\n", jobID, err)
+			return
+		}
+
+		fmt.Printf("%s %s %s\n", job.ID, job.Type, job.Status)
 	case "process":
 		jobID, ok := requireArg(os.Args, 2, "missing job id")
 		if !ok {
 			return
 		}
 
-		store := NewStore()
-		err := startJob(store, jobID)
+		store, err := LoadStore(jobsFile)
+		if err != nil {
+			fmt.Printf("failed to load jobs: %v\n", err)
+			return
+		}
+
+		err = startJob(store, jobID)
 		if err != nil {
 			if errors.Is(err, ErrJobNotFound) {
 				fmt.Printf("job not found: %s\n", jobID)
 				return
 			}
+
+			var invalidStatusErr InvalidJobStatusError
+			if errors.As(err, &invalidStatusErr) {
+				fmt.Printf("cannot process job %s: current status is %s\n", invalidStatusErr.JobID, invalidStatusErr.Status)
+				return
+			}
+
 			fmt.Printf("failed to start job %s: %v\n", jobID, err)
+			return
+		}
+
+		if err := store.Save(jobsFile); err != nil {
+			fmt.Printf("failed to save jobs: %v\n", err)
 			return
 		}
 
