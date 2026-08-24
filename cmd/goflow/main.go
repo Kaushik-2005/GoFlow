@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 )
 
@@ -64,7 +65,7 @@ func requireArg(args []string, index int, message string) (string, bool) {
 
 func printHelp() {
 	fmt.Println("Usage: goflow <command>")
-	fmt.Println("Commands: list, create, get, process")
+	fmt.Println("Commands: list, create, get, process, serve")
 }
 
 func main() {
@@ -184,6 +185,21 @@ func main() {
 		}
 
 		fmt.Printf("processing job: %s\n", jobID)
+	case "serve":
+		mux := http.NewServeMux()
+		mux.HandleFunc("/health/live", liveHandler)
+		mux.HandleFunc("/v1/jobs", jobsHandler)
+		mux.HandleFunc("/v1/jobs/", getJobHandler)
+
+		server := &http.Server{
+			Addr:    ":8080",
+			Handler: mux,
+		}
+
+		fmt.Println("starting server on :8080")
+		if err := server.ListenAndServe(); err != nil {
+			fmt.Printf("server error: %v\n", err)
+		}
 	default:
 		fmt.Printf("unknown command: %s\n", command)
 	}

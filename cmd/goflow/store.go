@@ -20,7 +20,7 @@ type Job struct {
 	Payload     []byte    `json:"payload"`
 	Status      JobStatus `json:"status"`
 	Attempts    int       `json:"attempts"`
-	MaxAttempts int       `json:"maxAttempts"`
+	MaxAttempts int       `json:"max_attempts"`
 }
 
 type Store struct {

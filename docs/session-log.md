@@ -354,3 +354,72 @@
 ### Next session
 
 - Start Day 7, Module 2.1 with `net/http` handlers on 2026-08-24
+
+## 2026-08-24 — Module 2.1 completion
+
+### Topics covered
+
+- `http.Server`
+- `http.Handler` and `http.HandlerFunc`
+- `ServeMux`
+- Routing by path and dispatch by method
+- JSON request and response bodies
+- Path extraction with `strings.TrimPrefix`
+- Status codes and method handling
+- Consistent JSON API error envelopes
+
+### Work completed
+
+- Added `cmd/goflow/http.go`
+- Implemented `liveHandler`, `jobsHandler`, `listJobsHandler`, `getJobHandler`, and `createJobHandler`
+- Wired `serve` mode in `cmd/goflow/main.go`
+- Exposed `/health/live`, `GET /v1/jobs`, `GET /v1/jobs/{id}`, and `POST /v1/jobs`
+- Added `writeJSONError(...)` and a structured API error shape
+- Fixed the serialized `max_attempts` field name and recreated `jobs.json` to match the new schema
+
+### Commands run
+
+- `Get-Content -LiteralPath 'Go_Industry_Roadmap_4_Weeks.md'`
+- `Get-Content -LiteralPath 'docs/tracker.md'`
+- `Get-Content -LiteralPath 'docs/learning.md'`
+- `Get-Content -LiteralPath 'docs/session-log.md'`
+- `Get-Content -LiteralPath 'cmd/goflow/main.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/store.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/service.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/http.go'`
+- `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/store.go`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow serve`
+- `curl http://localhost:8080/health/live`
+- `curl -X POST http://localhost:8080/health/live`
+- `curl http://localhost:8080/v1/jobs`
+- `curl http://localhost:8080/v1/jobs/job-2`
+- `curl http://localhost:8080/v1/jobs/job-9999`
+- `Invoke-RestMethod -Method POST -Uri http://localhost:8080/v1/jobs -ContentType application/json -Body '{"type":"email"}'`
+- `Invoke-WebRequest -Method POST -Uri http://localhost:8080/v1/jobs -ContentType application/json -Body '{}'`
+
+### Problems encountered
+
+- The `/v1/jobs` route was initially missing from the mux
+- One dispatch bug pointed `GET /v1/jobs` at the single-job handler instead of the list handler
+- PowerShell quoting caused one malformed `curl` POST request
+- Renaming a JSON field exposed the zero-value behavior for missing fields in old persisted data
+
+### What I understood well
+
+- The roles of `http.Server`, `ServeMux`, and handlers
+- Why the same path can support different operations by checking `r.Method`
+- Why APIs should return JSON while the CLI can stay plain text
+- Why `404` is the right mapping for `ErrJobNotFound`
+- Why structured JSON errors need both HTTP status and application-specific error codes
+
+### What needs revision
+
+- Add request body size limits and content-type validation in the next reliability module
+- Revisit how to keep persisted-data compatibility when serialized field names change
+- Later compare manual path extraction with cleaner transport-layer organization
+
+### Next session
+
+- Start Day 8, Module 2.2 with middleware and API reliability on 2026-08-25

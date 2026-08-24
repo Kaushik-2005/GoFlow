@@ -805,6 +805,123 @@ The current CLI flow now survives separate runs through `jobs.json`.
 
 ### Day 7: Module 2.1 - Building HTTP Servers
 
+#### Concept
+
+This module moved GoFlow from a CLI-only program into its first HTTP API using the standard `net/http` package. The focus was on the server/request/handler mental model, `ServeMux` routing, method-based dispatch, JSON request and response handling, path extraction, status codes, and consistent JSON error responses.
+
+#### Why it matters
+
+HTTP is the normal entry point for backend systems. This layer translates external requests into application operations and translates application results back into protocol-level responses. Understanding `net/http` directly is the foundation for using any higher-level Go web framework later.
+
+#### Mental model
+
+- `http.Server` owns the network-facing server configuration and listens for requests.
+- `ServeMux` matches request paths to handlers.
+- A handler reads from `*http.Request` and writes to `http.ResponseWriter`.
+- The same path can support different operations by dispatching on `r.Method`.
+- Handlers should translate between HTTP and application logic, not contain every business rule themselves.
+- HTTP status codes give coarse protocol-level meaning, while JSON error codes give stable application-level meaning.
+
+#### Syntax and APIs
+
+```go
+mux := http.NewServeMux()
+mux.HandleFunc("/health/live", liveHandler)
+mux.HandleFunc("/v1/jobs", jobsHandler)
+mux.HandleFunc("/v1/jobs/", getJobHandler)
+
+server := &http.Server{
+	Addr:    ":8080",
+	Handler: mux,
+}
+```
+
+```go
+func liveHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+```
+
+```go
+id := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
+if id == "" {
+	writeJSONError(w, http.StatusBadRequest, "JOB_ID_REQUIRED", "A job ID is required")
+	return
+}
+```
+
+#### Idiomatic Go points
+
+- Start with `net/http` before adding a framework.
+- Use `http.HandlerFunc` for simple handlers and early learning.
+- Use `http.Server` instead of only `http.ListenAndServe(...)` so timeouts and server behavior can be configured explicitly later.
+- Keep one route path and dispatch by HTTP method when the same resource supports multiple operations.
+- Return structured JSON errors instead of ad hoc plain text once an API surface starts to matter.
+
+#### Python comparison
+
+- A Go handler plays a similar role to a Flask or FastAPI route function, but the request/response model is more explicit.
+- `ServeMux` is a standard-library router rather than a framework-specific decorator system.
+- JSON decoding from `r.Body` is more explicit than many Python frameworks because Go requires a typed destination struct.
+
+#### Common mistakes
+
+- Confusing the collection route `/v1/jobs` with the single-resource route `/v1/jobs/{id}`.
+- Forgetting that the mux routes by path, not by HTTP method, so method dispatch must still happen in code.
+- Writing the response body before setting headers or status.
+- Returning plain-text API errors after the API has already started to stabilize around JSON.
+- Assuming a JSON field rename is backward compatible with already-saved persisted data.
+
+#### Project application
+
+Day 7 added the first HTTP surface to GoFlow:
+
+- `GET /health/live`
+- `GET /v1/jobs`
+- `GET /v1/jobs/{id}`
+- `POST /v1/jobs`
+
+The HTTP layer currently sits in `cmd/goflow/http.go` and uses the existing JSON-file store. It supports listing jobs, retrieving one job, creating a new job, and returning consistent JSON API errors.
+
+#### Production implications
+
+- Explicit method checks and status codes make the API predictable for clients.
+- Structured JSON errors give frontends and services a stable contract.
+- Plain `net/http` path handling is workable, but path extraction and route organization must stay disciplined as the API grows.
+- Renaming serialized JSON fields can break existing persisted data unless compatibility or migration is handled deliberately.
+- `http.Server` is the right base because timeouts and shutdown behavior become essential in later modules.
+
+#### Interview questions
+
+1. What is the difference between `http.Server`, `ServeMux`, and a handler?
+2. Why is `http.HandlerFunc` convenient for simple handlers?
+3. Why can `GET /v1/jobs` and `POST /v1/jobs` share the same path but do different things?
+4. Why should an API use structured JSON errors instead of plain text?
+5. Why is changing a JSON field name a compatibility concern for persisted data?
+
+#### References
+
+- Package net/http: https://pkg.go.dev/net/http
+- Effective Go: https://go.dev/doc/effective_go
+- Package encoding/json: https://pkg.go.dev/encoding/json
+
+#### My questions and corrections
+
+- `w` writes the response and `r` contains the incoming request; handlers read from `r` and write to `w`.
+- `Content-Type: application/json` is not just “because APIs use JSON”; it explicitly tells clients how to parse the body.
+- The reason to return JSON from the API and plain text from the CLI is that they serve different consumers: machines versus humans.
+- `ErrJobNotFound` maps to HTTP `404`, while validation errors like a missing `type` field map to `400`.
+- Keeping both HTTP status codes and JSON error codes matters because status gives the broad category and the JSON error code gives the precise application reason.
+- Renaming `maxAttempts` to `max_attempts` caused old saved jobs to decode `MaxAttempts` as `0` because missing JSON fields fall back to zero values by default.
+
+
 ### Day 8: Module 2.2 - Middleware and API Reliability
 
 ### Day 9: Module 2.3 - Project Organization and Architecture
@@ -840,6 +957,7 @@ The current CLI flow now survives separate runs through `jobs.json`.
 ### Day 23: Module 4.5 - Containers and Configuration
 
 ### Day 24: Module 4.6 - CI and Engineering Workflow
+
 
 
 

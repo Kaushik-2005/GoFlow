@@ -3,10 +3,10 @@
 ## Current Position
 
 - Current week: Week 2
-- Current module: Day 7 - Module 2.1
-- Current topic: HTTP servers with `net/http`
-- Current task: Start Day 7 by moving from CLI-only workflows to the first HTTP handler layer on 2026-08-24
-- Next milestone: Serve the first GoFlow HTTP endpoints with `net/http` while preserving the current job store behavior
+- Current module: Day 8 - Module 2.2
+- Current topic: Middleware and API reliability
+- Current task: Start Day 8 by adding request-level reliability concerns around the HTTP layer on 2026-08-25
+- Next milestone: Add the first middleware chain for method safety, request tracing, panic recovery, and request-size protections
 - Active blockers: None
 
 ## Roadmap Progress
@@ -19,7 +19,7 @@
 | 4 | Module 1.4 | Structs, methods, pointers, and interfaces | Completed | `Job` methods plus a small orchestration function using small consumer-defined interfaces | `gofmt -w ./cmd/goflow/job.go`; `go vet ./...`; `go test ./...`; learner explained structs, methods, value vs pointer receivers, pointers, implicit interface implementation, small interfaces, constructor functions, and implemented `CanRetry`, `MarkRunning`, and `startJob` | 4 |
 | 5 | Module 1.5 | Error handling | Completed | Sentinel errors, wrapped errors, and one custom typed error applied to store/service code | `gofmt -w ./cmd/goflow/store.go ./cmd/goflow/service.go ./cmd/goflow/job.go ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow process job-123`; learner explained `error`, `errors.New`, sentinel errors, `%w`, `errors.Is`, custom error types, and `errors.As` | 4 |
 | 6 | Module 1.6 | I/O, JSON, files, and configuration | Completed | Week 1 CLI deliverable with JSON-file persistence | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/store.go ./cmd/goflow/persistence.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow list`; `go run ./cmd/goflow get job-1`; `go run ./cmd/goflow process job-1`; learner explained `io.Reader` vs `*os.File`, JSON tags, `Marshal` vs `Unmarshal`, missing-file behavior, and map iteration order | 4 |
-| 7 | Module 2.1 | HTTP servers | Not Started | First `net/http` API endpoints | — | — |
+| 7 | Module 2.1 | HTTP servers | Completed | First `net/http` API endpoints | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/store.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`; `curl http://localhost:8080/v1/jobs`; `curl http://localhost:8080/v1/jobs/job-1`; `Invoke-RestMethod -Method POST -Uri http://localhost:8080/v1/jobs -ContentType application/json -Body '{"type":"email"}'`; learner explained handlers, mux routing, method dispatch, status codes, JSON request/response handling, path extraction, and API error shape | 4 |
 | 8 | Module 2.2 | Middleware and API reliability | Not Started | Request middleware stack and reliability guards | — | — |
 | 9 | Module 2.3 | Project organization and architecture | Not Started | Clear layered structure for API and worker code | — | — |
 | 10 | Module 2.4 | PostgreSQL and `database/sql` | Not Started | PostgreSQL-backed repository implementation | — | — |
@@ -106,3 +106,15 @@
 - Decisions made: treat a missing `jobs.json` file as an empty job list rather than an error; keep persistence in a dedicated helper file while the project remains in `package main`
 - Topics to revisit: later decide whether CLI list output should be sorted for deterministic UX and testing; later replace the temporary ID generation strategy with a safer identifier approach
 - Next action: start Day 7, Module 2.1 with `net/http` handlers on 2026-08-24
+
+
+### 2026-08-24
+
+- Topics studied: `http.Server`, `http.Handler`, `http.HandlerFunc`, `ServeMux`, path-based routing, method dispatch, status codes, JSON request and response bodies, path extraction, and consistent JSON API errors
+- Work implemented: added `cmd/goflow/http.go`; implemented `liveHandler`, `jobsHandler`, `listJobsHandler`, `getJobHandler`, and `createJobHandler`; added JSON API error helpers; wired `serve` mode in `cmd/goflow/main.go`; exposed `/health/live`, `GET /v1/jobs`, `GET /v1/jobs/{id}`, and `POST /v1/jobs`
+- Tests executed: `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/store.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`; `curl -X POST http://localhost:8080/health/live`; `curl http://localhost:8080/v1/jobs`; `curl http://localhost:8080/v1/jobs/job-2`; `Invoke-RestMethod -Method POST -Uri http://localhost:8080/v1/jobs -ContentType application/json -Body ''{"type":"email"}''`; `Invoke-WebRequest -Method POST -Uri http://localhost:8080/v1/jobs -ContentType application/json -Body ''{}''`
+- Results: Module 2.1 completed; GoFlow now serves its first HTTP API endpoints with `net/http` over the existing JSON-backed store
+- Problems encountered: an HTTP route was initially missing from the mux; one dispatch bug sent `GET /v1/jobs` to the single-job handler; PowerShell quoting caused one malformed `curl` request; changing `maxAttempts` to `max_attempts` required recreating `jobs.json` because old saved data decoded the renamed field as zero
+- Decisions made: keep the HTTP layer in `cmd/goflow/http.go` and `package main` for now; use one `/v1/jobs` handler that dispatches by method; prefer consistent JSON error envelopes instead of plain-text API errors
+- Topics to revisit: request body size limits, content-type validation, and path parameter handling in plain `net/http` before introducing cleaner transport structure later
+- Next action: start Day 8, Module 2.2 with middleware and API reliability on 2026-08-25
