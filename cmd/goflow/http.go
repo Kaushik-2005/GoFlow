@@ -118,7 +118,23 @@ func createJobHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req createJobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "INVALID_REQUEST_BODY", "The request body must be valid JSON")
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeJSONError(
+				w,
+				http.StatusRequestEntityTooLarge,
+				"REQUEST_BODY_TOO_LARGE",
+				"The request body exceeds the allowed size",
+			)
+			return
+		}
+
+		writeJSONError(
+			w,
+			http.StatusBadRequest,
+			"INVALID_REQUEST_BODY",
+			"The request body is invalid or malformed",
+		)
 		return
 	}
 

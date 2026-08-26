@@ -3,10 +3,10 @@
 ## Current Position
 
 - Current week: Week 2
-- Current module: Day 8 - Module 2.2
-- Current topic: Middleware and API reliability
-- Current task: Start Day 8 by adding request-level reliability concerns around the HTTP layer on 2026-08-25
-- Next milestone: Add the first middleware chain for method safety, request tracing, panic recovery, and request-size protections
+- Current module: Day 9 - Module 2.3
+- Current topic: Project organization and architecture
+- Current task: Start Day 9 by reorganizing the current API code into clearer responsibilities on 2026-08-27
+- Next milestone: Separate transport, service, and storage concerns enough to support the next database-backed changes cleanly
 - Active blockers: None
 
 ## Roadmap Progress
@@ -20,7 +20,7 @@
 | 5 | Module 1.5 | Error handling | Completed | Sentinel errors, wrapped errors, and one custom typed error applied to store/service code | `gofmt -w ./cmd/goflow/store.go ./cmd/goflow/service.go ./cmd/goflow/job.go ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow process job-123`; learner explained `error`, `errors.New`, sentinel errors, `%w`, `errors.Is`, custom error types, and `errors.As` | 4 |
 | 6 | Module 1.6 | I/O, JSON, files, and configuration | Completed | Week 1 CLI deliverable with JSON-file persistence | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/store.go ./cmd/goflow/persistence.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow list`; `go run ./cmd/goflow get job-1`; `go run ./cmd/goflow process job-1`; learner explained `io.Reader` vs `*os.File`, JSON tags, `Marshal` vs `Unmarshal`, missing-file behavior, and map iteration order | 4 |
 | 7 | Module 2.1 | HTTP servers | Completed | First `net/http` API endpoints | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/store.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`; `curl http://localhost:8080/v1/jobs`; `curl http://localhost:8080/v1/jobs/job-1`; `Invoke-RestMethod -Method POST -Uri http://localhost:8080/v1/jobs -ContentType application/json -Body '{"type":"email"}'`; learner explained handlers, mux routing, method dispatch, status codes, JSON request/response handling, path extraction, and API error shape | 4 |
-| 8 | Module 2.2 | Middleware and API reliability | Not Started | Request middleware stack and reliability guards | — | — |
+| 8 | Module 2.2 | Middleware and API reliability | Completed | Request middleware stack and reliability guards | `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/middleware.go ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `curl -i http://localhost:8080/health/live`; `Invoke-WebRequest -Method POST -Uri http://localhost:8080/v1/jobs -ContentType text/plain -Body '{"type":"email"}'`; oversized POST returned `REQUEST_BODY_TOO_LARGE`; learner explained middleware order, recovery, request IDs, body limits, and content-type enforcement | 4 |
 | 9 | Module 2.3 | Project organization and architecture | Not Started | Clear layered structure for API and worker code | — | — |
 | 10 | Module 2.4 | PostgreSQL and `database/sql` | Not Started | PostgreSQL-backed repository implementation | — | — |
 | 11 | Module 2.5 | Testing fundamentals | Not Started | Tested REST API with repository coverage | — | — |
@@ -118,3 +118,15 @@
 - Decisions made: keep the HTTP layer in `cmd/goflow/http.go` and `package main` for now; use one `/v1/jobs` handler that dispatches by method; prefer consistent JSON error envelopes instead of plain-text API errors
 - Topics to revisit: request body size limits, content-type validation, and path parameter handling in plain `net/http` before introducing cleaner transport structure later
 - Next action: start Day 8, Module 2.2 with middleware and API reliability on 2026-08-25
+
+
+### 2026-08-26
+
+- Topics studied: middleware shape and chaining, recovery middleware, request IDs, request-scoped context values, request body size limits, content-type validation, and more precise API error mapping
+- Work implemented: added `cmd/goflow/middleware.go`; implemented `recoveryMiddleware`, `requestIDMiddleware`, `chain(...)`, `requestBodyLimitMiddleware(...)`, and `requireJSONMiddleware(...)`; wired middleware into the HTTP server; mapped oversized request bodies to `REQUEST_BODY_TOO_LARGE`; verified request IDs in both headers and request context
+- Tests executed: `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/middleware.go ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `curl -i http://localhost:8080/health/live`; oversized `POST /v1/jobs`; `Invoke-WebRequest -Method POST -Uri http://localhost:8080/v1/jobs -ContentType text/plain -Body ''{"type":"email"}''`
+- Results: Module 2.2 completed; GoFlow now has its first middleware stack and reliability guards around the current HTTP API
+- Problems encountered: a temporary panic route was needed to prove recovery and then removed; exact content-type matching is currently strict and will reject variants like `application/json; charset=utf-8`; one decode path initially collapsed oversized bodies into the generic invalid-body error until `*http.MaxBytesError` handling was added
+- Decisions made: keep the middleware stack simple and local to `cmd/goflow` for now; use request IDs in both response headers and request context; enforce JSON content type and body size at the HTTP boundary instead of duplicating checks inside handlers
+- Topics to revisit: relax content-type parsing to allow valid JSON charset variants; later add structured logging that reads the request ID from context; revisit whether middleware should be selectively applied per route as the API grows
+- Next action: start Day 9, Module 2.3 with project organization and architecture on 2026-08-27

@@ -191,9 +191,17 @@ func main() {
 		mux.HandleFunc("/v1/jobs", jobsHandler)
 		mux.HandleFunc("/v1/jobs/", getJobHandler)
 
+		handler := chain(
+			mux,
+			requestIDMiddleware,
+			recoveryMiddleware,
+			requestBodyLimitMiddleware(1<<20),
+			requireJSONMiddleware,
+		)
+
 		server := &http.Server{
 			Addr:    ":8080",
-			Handler: mux,
+			Handler: handler,
 		}
 
 		fmt.Println("starting server on :8080")

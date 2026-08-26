@@ -423,3 +423,63 @@
 ### Next session
 
 - Start Day 8, Module 2.2 with middleware and API reliability on 2026-08-25
+
+## 2026-08-26 — Module 2.2 completion
+
+### Topics covered
+
+- Middleware shape and chaining
+- Panic recovery middleware
+- Request IDs in headers and request context
+- Request body size limiting
+- Content-type validation
+- More precise API error mapping for oversized bodies
+
+### Work completed
+
+- Added `cmd/goflow/middleware.go`
+- Implemented `recoveryMiddleware`, `requestIDMiddleware`, `chain(...)`, `requestBodyLimitMiddleware(...)`, and `requireJSONMiddleware(...)`
+- Wired the middleware stack into the HTTP server
+- Added request ID context storage
+- Mapped `*http.MaxBytesError` to `REQUEST_BODY_TOO_LARGE`
+- Verified unsupported media type handling and removed the temporary panic-testing route after validation
+
+### Commands run
+
+- `Get-Content -LiteralPath 'Go_Industry_Roadmap_4_Weeks.md'`
+- `Get-Content -LiteralPath 'docs/tracker.md'`
+- `Get-Content -LiteralPath 'docs/learning.md'`
+- `Get-Content -LiteralPath 'docs/session-log.md'`
+- `Get-Content -LiteralPath 'cmd/goflow/http.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/main.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/middleware.go'`
+- `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/middleware.go ./cmd/goflow/main.go`
+- `go vet ./...`
+- `go test ./...`
+- `curl -i http://localhost:8080/health/live`
+- oversized `POST /v1/jobs`
+- `Invoke-WebRequest -Method POST -Uri http://localhost:8080/v1/jobs -ContentType text/plain -Body '{"type":"email"}'`
+
+### Problems encountered
+
+- The first oversized-body implementation still returned `INVALID_REQUEST_BODY` until `*http.MaxBytesError` was checked explicitly
+- A temporary panic endpoint was useful for proving recovery middleware, but it had to be removed afterward
+- The content-type check is currently exact and will reject valid variants like `application/json; charset=utf-8`
+
+### What I understood well
+
+- Middleware wraps handlers and order changes behavior
+- Recovery middleware should return controlled `500` responses instead of letting panics escape
+- Request IDs are useful in both response headers and request context
+- Oversized bodies deserve a more specific error than generic invalid JSON
+- Content-type enforcement belongs at the HTTP boundary
+
+### What needs revision
+
+- Relax content-type validation to allow normal JSON charset variants later
+- Add structured request logging that reads the request ID from context in the next stage
+- Revisit selective middleware application as routes become more different from each other
+
+### Next session
+
+- Start Day 9, Module 2.3 with project organization and architecture on 2026-08-27

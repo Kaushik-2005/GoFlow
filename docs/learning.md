@@ -924,6 +924,143 @@ The HTTP layer currently sits in `cmd/goflow/http.go` and uses the existing JSON
 
 ### Day 8: Module 2.2 - Middleware and API Reliability
 
+#### Concept
+
+This module added the first reliability layer around GoFlow's HTTP API. Instead of keeping all HTTP concerns inside handlers, the API now uses middleware for request IDs, panic recovery, request body size limits, and JSON content-type enforcement. The module also refined API error mapping so oversized request bodies return a specific error instead of being lumped into generic JSON decode failures.
+
+#### Why it matters
+
+A working handler is not yet a reliable HTTP service. Real APIs need consistent protections around requests: they should survive panics, reject unsupported inputs early, limit resource consumption, and make each request traceable. Middleware is the standard way to centralize those cross-cutting concerns.
+
+#### Mental model
+
+- Middleware is a function that wraps a handler and returns a new handler.
+- Each middleware layer can run before the next handler, after it, or stop the request early.
+- Middleware order matters because outer layers can observe and protect everything beneath them.
+- Request IDs are useful both for clients through headers and for server-side code through request context.
+- Request body limits and content-type enforcement are HTTP boundary rules, so they belong near the transport layer rather than duplicated inside every handler.
+
+#### Syntax and APIs
+
+```go
+func recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if recover() != nil {
+				writeJSONError(w, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", "An internal server error occurred")
+			}
+		}()
+
+		next.ServeHTTP(w, r)
+	})
+}
+```
+
+```go
+func requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := fmt.Sprintf("req-%d", time.Now().UnixNano())
+		w.Header().Set("X-Request-ID", requestID)
+
+		ctx := context.WithValue(r.Context(), requestIDContextKey, requestID)
+		r = r.WithContext(ctx)
+
+		next.ServeHTTP(w, r)
+	})
+}
+```
+
+```go
+func requestBodyLimitMiddleware(limit int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+```
+
+```go
+handler := chain(
+	mux,
+	requestIDMiddleware,
+	recoveryMiddleware,
+	requestBodyLimitMiddleware(1<<20),
+	requireJSONMiddleware,
+)
+```
+
+#### Idiomatic Go points
+
+- Middleware is usually explicit handler composition, not hidden framework magic.
+- Use `defer` plus `recover()` only for unexpected failures, not for normal control flow.
+- Prefer typed context keys over plain strings when storing context values.
+- Keep cross-cutting HTTP concerns in middleware instead of duplicating them in handlers.
+- Distinguish different client errors precisely when the API contract benefits from it, such as malformed JSON versus oversized bodies.
+
+#### Python comparison
+
+- Middleware here plays a similar role to middleware in Django, FastAPI, or Express-style stacks, but the composition is explicit through `http.Handler` wrapping.
+- `context.Context` is the Go-native place for request-scoped values, where Python frameworks often rely on request objects or framework-specific globals.
+
+#### Common mistakes
+
+- Treating middleware order as interchangeable.
+- Returning generic invalid-body errors for oversized requests after adding body limits.
+- Leaving temporary panic-testing routes in the API after verification.
+- Keeping request IDs only in response headers and not making them available to server-side code.
+- Using overly strict transport rules without realizing valid variants exist, such as `application/json; charset=utf-8`.
+
+#### Project application
+
+Day 8 added a real middleware stack to GoFlow:
+
+- `requestIDMiddleware`
+- `recoveryMiddleware`
+- `requestBodyLimitMiddleware(1<<20)`
+- `requireJSONMiddleware`
+- `chain(...)`
+
+The API now:
+- attaches `X-Request-ID` to responses
+- stores the same request ID in request context
+- recovers panics into structured JSON `500` responses
+- rejects oversized request bodies with `REQUEST_BODY_TOO_LARGE`
+- rejects non-JSON `POST /v1/jobs` requests with `UNSUPPORTED_MEDIA_TYPE`
+
+#### Production implications
+
+- Recovery middleware prevents one unexpected panic from turning into a process-level outage.
+- Request IDs are foundational for later structured logging and tracing.
+- Centralized request limits protect server memory and resource usage.
+- Content-type checks make the API contract explicit and reduce ambiguous request handling.
+- Middleware becomes a key architectural boundary once the project grows and route-specific policies diverge.
+
+#### Interview questions
+
+1. What is middleware in `net/http`, and why is it useful?
+2. Why does middleware order matter?
+3. Why should request IDs exist in both response headers and request context?
+4. Why is `413` more precise than `400` for oversized request bodies?
+5. Why should panic recovery be middleware instead of replacing normal error handling?
+
+#### References
+
+- Package net/http: https://pkg.go.dev/net/http
+- Package context: https://pkg.go.dev/context
+- Effective Go: https://go.dev/doc/effective_go
+
+#### My questions and corrections
+
+- `next` in middleware is the handler being wrapped; middleware can run before it, after it, or stop the request entirely.
+- Recovery middleware exists for unexpected failures, while returned errors still handle expected failure paths.
+- Request body size limiting belongs in middleware because it is a shared HTTP safety rule, not per-handler business logic.
+- Request IDs are more useful than only logging the path because many requests share the same path, but each request ID is unique.
+- HTTP status and JSON error code both matter: status gives the broad protocol category, while the JSON code gives the exact application reason.
+- `http.StatusRequestEntityTooLarge` is the more accurate status for bodies that exceed the configured limit.
+
+
 ### Day 9: Module 2.3 - Project Organization and Architecture
 
 ### Day 10: Module 2.4 - PostgreSQL and `database/sql`
@@ -957,6 +1094,7 @@ The HTTP layer currently sits in `cmd/goflow/http.go` and uses the existing JSON
 ### Day 23: Module 4.5 - Containers and Configuration
 
 ### Day 24: Module 4.6 - CI and Engineering Workflow
+
 
 
 
