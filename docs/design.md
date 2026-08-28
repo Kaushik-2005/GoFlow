@@ -531,9 +531,82 @@ sequenceDiagram
     Handler-->>Client: JSON response or structured error
 ```
 
+## Day 9: Core Package Extraction and Dependency Direction
+
+### What Changed
+
+Day 9 extracted the reusable application core from `cmd/goflow` into `internal/goflow`.
+The main goal was to correct dependency direction before the upcoming database work.
+
+### Why Extract the Core Package First
+
+Extracting a dedicated HTTP package first would have been premature because the HTTP layer still depended on types and functions trapped in `package main`.
+By moving the core job model, store logic, persistence helpers, and service orchestration into `internal/goflow`, both CLI and HTTP layers now have a reusable dependency target.
+
+### Package Boundary Design
+
+#### `internal/goflow`
+
+This package now owns:
+- `Job` and `JobStatus`
+- `Store` and related persistence-facing methods
+- file persistence helpers
+- service orchestration through `StartJob(...)`
+- shared domain errors
+
+#### `cmd/goflow`
+
+This folder remains the outer executable layer and now owns:
+- CLI command dispatch
+- HTTP server startup
+- HTTP handlers
+- middleware
+- dependency wiring
+
+### Why `main` Stays Thin
+
+The refactor also removed old practice helpers from `main.go` because they were leftover learning code, not app wiring.
+The remaining `main` responsibilities are now closer to the intended design:
+- parse command intent
+- load dependencies
+- call reusable core logic
+- start the HTTP server
+
+### Day 9 Architecture Impact
+
+- Created the first reusable internal package.
+- Corrected dependency direction so outer layers import shared logic instead of the other way around.
+- Prepared the project for repository replacement in the PostgreSQL module.
+
+### Day 9 Diagram
+
+```mermaid
+flowchart TD
+    CLI[cmd/goflow main.go CLI] --> Core[internal/goflow]
+    HTTP[cmd/goflow http.go handlers] --> Core
+    Middleware[cmd/goflow middleware.go] --> HTTP
+    Core --> JSON[(jobs.json)]
+```
+
+### Day 9 Flow
+
+```mermaid
+sequenceDiagram
+    participant Main as cmd/goflow main.go
+    participant HTTP as http.go
+    participant Core as internal/goflow
+    participant File as jobs.json
+
+    Main->>Core: LoadStore / StartJob / Job creation
+    HTTP->>Core: LoadStore / Store methods / errors
+    Core->>File: read and write persisted jobs
+    Core-->>Main: shared logic results
+    Core-->>HTTP: shared logic results
+```
+
 ## Known Current Limitations
 
-- The project still lives in `package main`; cleaner package boundaries are deferred to the next architecture module.
+- The project now has a reusable `internal/goflow` core package, but the HTTP transport still lives in `cmd/goflow` rather than a dedicated internal transport package.
 - `jobs.json` remains a local learning-stage store, not a multi-process-safe persistence layer.
 - Job ID generation is still based on `len(store.List())+1`, which is not production-safe.
 - Content-type validation is currently strict and does not yet allow valid variants like `application/json; charset=utf-8`.
@@ -545,3 +618,4 @@ sequenceDiagram
 - `docs/learning.md`
 - `docs/session-log.md`
 - `docs/decisions.md`
+

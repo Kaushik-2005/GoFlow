@@ -1,4 +1,4 @@
-package main
+package goflow
 
 import "fmt"
 
@@ -7,7 +7,7 @@ type JobReaderWriter interface {
 	Update(job Job) error
 }
 
-func startJob(store JobReaderWriter, id string) error {
+func StartJob(store JobReaderWriter, id string) error {
 	job, err := store.Get(id)
 	if err != nil {
 		return fmt.Errorf("start job %q: %w", id, err)

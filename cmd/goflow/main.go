@@ -3,57 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
+	"goflow/internal/goflow"
 	"net/http"
 	"os"
 )
 
 const jobsFile = "jobs.json"
-
-func maxPriority(priorities []int) int {
-	max := priorities[0]
-
-	for _, priority := range priorities {
-		if priority > max {
-			max = priority
-		}
-	}
-
-	return max
-}
-
-func countByStatus(statuses []string) map[string]int {
-	counts := make(map[string]int)
-
-	for _, status := range statuses {
-		counts[status]++
-	}
-
-	return counts
-}
-
-func isValidJobName(name string) bool {
-	if len(name) < 3 {
-		return false
-	}
-
-	return true
-}
-
-func retryDelay(attempt int) int {
-	return 1 << attempt
-}
-
-func filterCompleted(statuses []string) []string {
-	completed := []string{}
-
-	for _, status := range statuses {
-		if status == "completed" {
-			completed = append(completed, status)
-		}
-	}
-
-	return completed
-}
 
 func requireArg(args []string, index int, message string) (string, bool) {
 	if len(args) <= index {
@@ -78,7 +33,7 @@ func main() {
 
 	switch command {
 	case "list":
-		store, err := LoadStore(jobsFile)
+		store, err := goflow.LoadStore(jobsFile)
 		if err != nil {
 			fmt.Printf("failed to load jobs: %v\n", err)
 			return
@@ -98,22 +53,22 @@ func main() {
 			return
 		}
 
-		store, err := LoadStore(jobsFile)
+		store, err := goflow.LoadStore(jobsFile)
 		if err != nil {
 			fmt.Printf("failed to load jobs: %v\n", err)
 			return
 		}
 
-		job := Job{
+		job := goflow.Job{
 			ID:          fmt.Sprintf("job-%d", len(store.List())+1),
 			Type:        jobType,
-			Status:      StatusPending,
+			Status:      goflow.StatusPending,
 			Attempts:    0,
 			MaxAttempts: 3,
 		}
 
 		if err := store.Create(job); err != nil {
-			if errors.Is(err, ErrJobAlreadyExists) {
+			if errors.Is(err, goflow.ErrJobAlreadyExists) {
 				fmt.Printf("job already exists: %s\n", job.ID)
 				return
 			}
@@ -133,7 +88,7 @@ func main() {
 			return
 		}
 
-		store, err := LoadStore(jobsFile)
+		store, err := goflow.LoadStore(jobsFile)
 		if err != nil {
 			fmt.Printf("failed to load jobs: %v\n", err)
 			return
@@ -141,7 +96,7 @@ func main() {
 
 		job, err := store.Get(jobID)
 		if err != nil {
-			if errors.Is(err, ErrJobNotFound) {
+			if errors.Is(err, goflow.ErrJobNotFound) {
 				fmt.Printf("job not found: %s\n", jobID)
 				return
 			}
@@ -156,20 +111,20 @@ func main() {
 			return
 		}
 
-		store, err := LoadStore(jobsFile)
+		store, err := goflow.LoadStore(jobsFile)
 		if err != nil {
 			fmt.Printf("failed to load jobs: %v\n", err)
 			return
 		}
 
-		err = startJob(store, jobID)
+		err = goflow.StartJob(store, jobID)
 		if err != nil {
-			if errors.Is(err, ErrJobNotFound) {
+			if errors.Is(err, goflow.ErrJobNotFound) {
 				fmt.Printf("job not found: %s\n", jobID)
 				return
 			}
 
-			var invalidStatusErr InvalidJobStatusError
+			var invalidStatusErr goflow.InvalidJobStatusError
 			if errors.As(err, &invalidStatusErr) {
 				fmt.Printf("cannot process job %s: current status is %s\n", invalidStatusErr.JobID, invalidStatusErr.Status)
 				return

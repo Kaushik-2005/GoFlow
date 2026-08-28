@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"goflow/internal/goflow"
 	"net/http"
 	"strings"
 )
@@ -60,7 +61,7 @@ func listJobsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store, err := LoadStore(jobsFile)
+	store, err := goflow.LoadStore(jobsFile)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "STORE_LOAD_FAILED", "Failed to load jobs")
 		return
@@ -84,7 +85,7 @@ func getJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store, err := LoadStore(jobsFile)
+	store, err := goflow.LoadStore(jobsFile)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "STORE_LOAD_FAILED", "Failed to load jobs")
 		return
@@ -92,7 +93,7 @@ func getJobHandler(w http.ResponseWriter, r *http.Request) {
 
 	job, err := store.Get(id)
 	if err != nil {
-		if errors.Is(err, ErrJobNotFound) {
+		if errors.Is(err, goflow.ErrJobNotFound) {
 			writeJSONError(w, http.StatusNotFound, "JOB_NOT_FOUND", "The requested job does not exist")
 			return
 		}
@@ -143,16 +144,16 @@ func createJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store, err := LoadStore(jobsFile)
+	store, err := goflow.LoadStore(jobsFile)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "STORE_LOAD_FAILED", "Failed to load jobs")
 		return
 	}
 
-	job := Job{
+	job := goflow.Job{
 		ID:          fmt.Sprintf("job-%d", len(store.List())+1),
 		Type:        req.Type,
-		Status:      StatusPending,
+		Status:      goflow.StatusPending,
 		Attempts:    0,
 		MaxAttempts: 3,
 	}

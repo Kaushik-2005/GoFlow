@@ -3,10 +3,10 @@
 ## Current Position
 
 - Current week: Week 2
-- Current module: Day 9 - Module 2.3
-- Current topic: Project organization and architecture
-- Current task: Start Day 9 by reorganizing the current API code into clearer responsibilities on 2026-08-27
-- Next milestone: Separate transport, service, and storage concerns enough to support the next database-backed changes cleanly
+- Current module: Day 10 - Module 2.4
+- Current topic: PostgreSQL and `database/sql`
+- Current task: Start Day 10 by replacing JSON-file persistence with a PostgreSQL-oriented repository design on 2026-08-30
+- Next milestone: Introduce a database-backed repository boundary without changing the higher-level job orchestration rules
 - Active blockers: None
 
 ## Roadmap Progress
@@ -21,7 +21,7 @@
 | 6 | Module 1.6 | I/O, JSON, files, and configuration | Completed | Week 1 CLI deliverable with JSON-file persistence | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/store.go ./cmd/goflow/persistence.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow list`; `go run ./cmd/goflow get job-1`; `go run ./cmd/goflow process job-1`; learner explained `io.Reader` vs `*os.File`, JSON tags, `Marshal` vs `Unmarshal`, missing-file behavior, and map iteration order | 4 |
 | 7 | Module 2.1 | HTTP servers | Completed | First `net/http` API endpoints | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/store.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`; `curl http://localhost:8080/v1/jobs`; `curl http://localhost:8080/v1/jobs/job-1`; `Invoke-RestMethod -Method POST -Uri http://localhost:8080/v1/jobs -ContentType application/json -Body '{"type":"email"}'`; learner explained handlers, mux routing, method dispatch, status codes, JSON request/response handling, path extraction, and API error shape | 4 |
 | 8 | Module 2.2 | Middleware and API reliability | Completed | Request middleware stack and reliability guards | `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/middleware.go ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `curl -i http://localhost:8080/health/live`; `Invoke-WebRequest -Method POST -Uri http://localhost:8080/v1/jobs -ContentType text/plain -Body '{"type":"email"}'`; oversized POST returned `REQUEST_BODY_TOO_LARGE`; learner explained middleware order, recovery, request IDs, body limits, and content-type enforcement | 4 |
-| 9 | Module 2.3 | Project organization and architecture | Not Started | Clear layered structure for API and worker code | — | — |
+| 9 | Module 2.3 | Project organization and architecture | Completed | Clear layered structure for API and worker code | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/middleware.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`; learner explained why reusable core logic must leave `package main`, why handlers should not import `main`, and why `main` should stay thin | 4 |
 | 10 | Module 2.4 | PostgreSQL and `database/sql` | Not Started | PostgreSQL-backed repository implementation | — | — |
 | 11 | Module 2.5 | Testing fundamentals | Not Started | Tested REST API with repository coverage | — | — |
 | 12 | Week 2 checkpoint | Revision and spillover | Not Started | Checkpoint review and catch-up buffer | — | — |
@@ -130,3 +130,15 @@
 - Decisions made: keep the middleware stack simple and local to `cmd/goflow` for now; use request IDs in both response headers and request context; enforce JSON content type and body size at the HTTP boundary instead of duplicating checks inside handlers
 - Topics to revisit: relax content-type parsing to allow valid JSON charset variants; later add structured logging that reads the request ID from context; revisit whether middleware should be selectively applied per route as the API grows
 - Next action: start Day 9, Module 2.3 with project organization and architecture on 2026-08-27
+
+
+### 2026-08-29
+
+- Topics studied: package-boundary design, dependency direction, handler vs service vs repository responsibilities, and keeping `main` as a thin wiring layer
+- Work implemented: created `internal/goflow`; moved `store.go`, `job.go`, `service.go`, and `persistence.go` into the reusable core package; exported `StartJob(...)`; updated `main.go` and `http.go` to import `goflow/internal/goflow`; removed old Day 2 practice helpers from `main.go`
+- Tests executed: `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/middleware.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`
+- Results: Module 2.3 completed; GoFlow now has a reusable core package and a clearer dependency direction from outer transport/CLI layers into shared application logic
+- Problems encountered: wildcard formatting from PowerShell needed explicit file expansion; moving core logic out of `package main` required exporting `StartJob(...)`; `http.go` briefly had the wrong package declaration before being restored to `package main`
+- Decisions made: extract a reusable core package before extracting a dedicated HTTP package; keep `cmd/goflow` as the current outer app layer; treat leftover practice helpers in `main.go` as cleanup targets before moving real startup code
+- Topics to revisit: later extract the HTTP transport into its own internal package once the shared core boundary is stable; split CLI command logic further once additional binaries or commands justify it
+- Next action: start Day 10, Module 2.4 with PostgreSQL and `database/sql` on 2026-08-30

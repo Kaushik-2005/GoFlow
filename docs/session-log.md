@@ -483,3 +483,66 @@
 ### Next session
 
 - Start Day 9, Module 2.3 with project organization and architecture on 2026-08-27
+
+## 2026-08-29 — Module 2.3 completion
+
+### Topics covered
+
+- Package-boundary design
+- Handler vs service vs repository responsibilities
+- Dependency direction
+- Why `main` should stay thin
+- Using `internal/` for reusable app-only packages
+
+### Work completed
+
+- Created `internal/goflow`
+- Moved `store.go`, `job.go`, `service.go`, and `persistence.go` into the reusable core package
+- Exported `StartJob(...)`
+- Updated `main.go` and `http.go` to import `goflow/internal/goflow`
+- Removed old practice helpers from `main.go`
+- Preserved existing CLI and HTTP behavior after the refactor
+
+### Commands run
+
+- `Get-Content -LiteralPath 'Go_Industry_Roadmap_4_Weeks.md'`
+- `Get-Content -LiteralPath 'docs/tracker.md'`
+- `Get-Content -LiteralPath 'docs/learning.md'`
+- `Get-Content -LiteralPath 'docs/session-log.md'`
+- `Get-ChildItem -LiteralPath 'cmd/goflow'`
+- `Get-ChildItem -LiteralPath 'internal/goflow'`
+- `Get-Content -LiteralPath 'cmd/goflow/main.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/http.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/middleware.go'`
+- `Get-Content -LiteralPath 'internal/goflow/store.go'`
+- `Get-Content -LiteralPath 'internal/goflow/job.go'`
+- `Get-Content -LiteralPath 'internal/goflow/service.go'`
+- `Get-Content -LiteralPath 'internal/goflow/persistence.go'`
+- `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/middleware.go`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow serve`
+- `curl http://localhost:8080/health/live`
+
+### Problems encountered
+
+- PowerShell wildcard formatting did not work directly with `gofmt`
+- `StartJob(...)` had to be exported after moving service logic into another package
+- `http.go` briefly had the wrong package declaration during the refactor
+
+### What I understood well
+
+- Why handlers and `main` should depend on a reusable core package instead of the reverse
+- Why `internal/goflow` was the right first extraction target
+- Why `service.go` is a clearer service-layer example than store/persistence files
+- Why startup wiring should stay in `main` while leftover practice helpers should be removed
+
+### What needs revision
+
+- Later extract the HTTP transport into its own internal package once the core boundary is stable
+- Revisit finer CLI separation if additional binaries or commands are introduced
+- Continue tightening architecture as PostgreSQL replaces file persistence
+
+### Next session
+
+- Start Day 10, Module 2.4 with PostgreSQL and `database/sql` on 2026-08-30

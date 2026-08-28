@@ -1063,6 +1063,105 @@ The API now:
 
 ### Day 9: Module 2.3 - Project Organization and Architecture
 
+#### Concept
+
+This module turned GoFlow from a mostly `package main` application into a program with a reusable core package. The main design lesson was that architecture is about responsibility and dependency direction, not just creating more folders. The first real boundary extracted was `internal/goflow`, which now holds core job types, store logic, persistence helpers, and service orchestration.
+
+#### Why it matters
+
+As soon as the project has both CLI and HTTP entry points, `package main` becomes the wrong place to keep shared logic. Future work such as PostgreSQL repositories, tests, and additional binaries becomes harder if reusable logic still lives inside the entry point package. A reusable core package gives outer layers a stable dependency target.
+
+#### Mental model
+
+- `main` should wire dependencies and start the app.
+- Handlers should translate HTTP into application operations.
+- Middleware should protect the transport boundary.
+- Core job logic should live in a reusable package that outer layers can import.
+- Dependency direction should point inward toward shared logic, not outward toward `main`.
+
+#### Syntax and APIs
+
+```go
+import "goflow/internal/goflow"
+```
+
+```go
+store, err := goflow.LoadStore(jobsFile)
+if err != nil {
+	return
+}
+```
+
+```go
+err = goflow.StartJob(store, jobID)
+```
+
+#### Idiomatic Go points
+
+- Do not make other packages depend on `package main`.
+- Extract packages around real responsibilities, not around arbitrary file counts.
+- Keep `main` thin and focused on dependency wiring and startup.
+- Export only what outer packages genuinely need, such as `StartJob(...)`.
+- Use `internal/` for application-only packages that should not become public library APIs.
+
+#### Python comparison
+
+- This is similar to moving reusable logic out of a Python entry script and into importable modules, but Go makes the boundary stricter because `package main` is explicitly an executable package rather than a normal reusable import target.
+
+#### Common mistakes
+
+- Splitting folders before understanding dependency direction.
+- Moving transport code out first while it still depends on logic trapped inside `main`.
+- Leaving stale learning helpers in `main.go` after the project has real runtime structure.
+- Exporting too much instead of only what the outer layers require.
+
+#### Project application
+
+Day 9 created the first reusable core package:
+
+- `internal/goflow/store.go`
+- `internal/goflow/job.go`
+- `internal/goflow/service.go`
+- `internal/goflow/persistence.go`
+
+The outer app layer in `cmd/goflow` now imports `internal/goflow` for:
+- store loading
+- job creation
+- error sentinels
+- job status constants
+- service orchestration via `StartJob(...)`
+
+`main.go` was also cleaned up by removing old practice helpers that no longer belong in the entry point.
+
+#### Production implications
+
+- Clearer dependency direction makes storage replacement safer, which matters immediately for the PostgreSQL module.
+- Shared logic becomes easier to test independently from the CLI and HTTP layers.
+- Keeping `internal/` boundaries explicit discourages accidental public-library style coupling too early.
+- A thinner `main` makes future binaries like `cmd/api` and `cmd/worker` easier to introduce.
+
+#### Interview questions
+
+1. Why should reusable application logic not stay in `package main`?
+2. Why was `internal/goflow` a safer first extraction than an `internal/httpapi` package?
+3. What should `main` own in a healthy Go application?
+4. Why does package extraction need to respect dependency direction?
+5. Why are leftover learning helpers in `main.go` an architectural smell once the app has real boundaries?
+
+#### References
+
+- How to Write Go Code: https://go.dev/doc/code
+- Effective Go: https://go.dev/doc/effective_go
+- Package layout and `internal`: https://go.dev/doc/modules/layout
+
+#### My questions and corrections
+
+- The key reason to extract a core package first is not that the current layout is temporary; it is that outer layers must not depend on `package main`.
+- `service.go` is the clearest service-layer file because it orchestrates state transitions instead of doing direct transport or persistence work.
+- `serve` still belongs in `main.go` for now because it is startup wiring; old practice helpers were the better cleanup target.
+- `main.go` and `http.go` should both be able to import the reusable core package after the refactor.
+
+
 ### Day 10: Module 2.4 - PostgreSQL and `database/sql`
 
 ### Day 11: Module 2.5 - Testing Fundamentals
@@ -1094,6 +1193,7 @@ The API now:
 ### Day 23: Module 4.5 - Containers and Configuration
 
 ### Day 24: Module 4.6 - CI and Engineering Workflow
+
 
 
 
