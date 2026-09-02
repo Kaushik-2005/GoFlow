@@ -5,9 +5,9 @@
 - Current week: Week 2
 - Current module: Day 10 - Module 2.4
 - Current topic: PostgreSQL and `database/sql`
-- Current task: Start Day 10 by replacing JSON-file persistence with a PostgreSQL-oriented repository design on 2026-08-30
-- Next milestone: Introduce a database-backed repository boundary without changing the higher-level job orchestration rules
-- Active blockers: None
+- Current task: Validate the PostgreSQL-backed CLI and HTTP flows against a live database on 2026-09-01
+- Next milestone: Start a local PostgreSQL instance, set `DATABASE_URL`, and verify create/list/get/process plus HTTP endpoints end to end
+- Active blockers: `DATABASE_URL` is not set and no local PostgreSQL instance is currently available in this environment
 
 ## Roadmap Progress
 
@@ -22,7 +22,7 @@
 | 7 | Module 2.1 | HTTP servers | Completed | First `net/http` API endpoints | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/store.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`; `curl http://localhost:8080/v1/jobs`; `curl http://localhost:8080/v1/jobs/job-1`; `Invoke-RestMethod -Method POST -Uri http://localhost:8080/v1/jobs -ContentType application/json -Body '{"type":"email"}'`; learner explained handlers, mux routing, method dispatch, status codes, JSON request/response handling, path extraction, and API error shape | 4 |
 | 8 | Module 2.2 | Middleware and API reliability | Completed | Request middleware stack and reliability guards | `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/middleware.go ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `curl -i http://localhost:8080/health/live`; `Invoke-WebRequest -Method POST -Uri http://localhost:8080/v1/jobs -ContentType text/plain -Body '{"type":"email"}'`; oversized POST returned `REQUEST_BODY_TOO_LARGE`; learner explained middleware order, recovery, request IDs, body limits, and content-type enforcement | 4 |
 | 9 | Module 2.3 | Project organization and architecture | Completed | Clear layered structure for API and worker code | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/middleware.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`; learner explained why reusable core logic must leave `package main`, why handlers should not import `main`, and why `main` should stay thin | 4 |
-| 10 | Module 2.4 | PostgreSQL and `database/sql` | Not Started | PostgreSQL-backed repository implementation | — | — |
+| 10 | Module 2.4 | PostgreSQL and `database/sql` | Implementing | PostgreSQL-backed CLI and HTTP runtime with automatic schema setup | `go get github.com/lib/pq`; `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/database.go ./internal/goflow/service.go ./internal/goflow/postgres_repository.go`; `go mod tidy`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow list` returned `failed to open store: DATABASE_URL is not set`, proving the runtime now targets PostgreSQL instead of `jobs.json` | 3 |
 | 11 | Module 2.5 | Testing fundamentals | Not Started | Tested REST API with repository coverage | — | — |
 | 12 | Week 2 checkpoint | Revision and spillover | Not Started | Checkpoint review and catch-up buffer | — | — |
 | 13 | Module 3.1 | Goroutines and channels | Not Started | First concurrent processing pipeline | — | — |
@@ -95,7 +95,6 @@
 - Topics to revisit: later show `errors.As` at a boundary with a real branch on `InvalidJobStatusError` once the CLI/API path grows
 - Next action: start Day 6, Module 1.6 with file I/O, JSON encoding, and persistence on 2026-08-22
 
-
 ### 2026-08-23
 
 - Topics studied: `io.Reader` and `io.Writer`, file helpers from `os`, `encoding/json`, struct tags, `Marshal` vs `Unmarshal`, missing-file handling, JSON-file persistence, and a real `errors.As` boundary case
@@ -106,7 +105,6 @@
 - Decisions made: treat a missing `jobs.json` file as an empty job list rather than an error; keep persistence in a dedicated helper file while the project remains in `package main`
 - Topics to revisit: later decide whether CLI list output should be sorted for deterministic UX and testing; later replace the temporary ID generation strategy with a safer identifier approach
 - Next action: start Day 7, Module 2.1 with `net/http` handlers on 2026-08-24
-
 
 ### 2026-08-24
 
@@ -119,7 +117,6 @@
 - Topics to revisit: request body size limits, content-type validation, and path parameter handling in plain `net/http` before introducing cleaner transport structure later
 - Next action: start Day 8, Module 2.2 with middleware and API reliability on 2026-08-25
 
-
 ### 2026-08-26
 
 - Topics studied: middleware shape and chaining, recovery middleware, request IDs, request-scoped context values, request body size limits, content-type validation, and more precise API error mapping
@@ -131,7 +128,6 @@
 - Topics to revisit: relax content-type parsing to allow valid JSON charset variants; later add structured logging that reads the request ID from context; revisit whether middleware should be selectively applied per route as the API grows
 - Next action: start Day 9, Module 2.3 with project organization and architecture on 2026-08-27
 
-
 ### 2026-08-29
 
 - Topics studied: package-boundary design, dependency direction, handler vs service vs repository responsibilities, and keeping `main` as a thin wiring layer
@@ -142,3 +138,16 @@
 - Decisions made: extract a reusable core package before extracting a dedicated HTTP package; keep `cmd/goflow` as the current outer app layer; treat leftover practice helpers in `main.go` as cleanup targets before moving real startup code
 - Topics to revisit: later extract the HTTP transport into its own internal package once the shared core boundary is stable; split CLI command logic further once additional binaries or commands justify it
 - Next action: start Day 10, Module 2.4 with PostgreSQL and `database/sql` on 2026-08-30
+
+### 2026-09-01
+
+- Topics studied: `sql.DB`, `PingContext`, `QueryRowContext`, `QueryContext`, `ExecContext`, `Scan`, row cleanup, and parameterized queries
+- Work implemented: added `internal/goflow/postgres_repository.go` with a context-aware `JobRepository` interface and PostgreSQL-backed `Create`, `Get`, `List`, `Update`, and `Delete` methods; added `migrations/001_create_jobs.sql`
+- Tests executed: `gofmt -w ./internal/goflow/postgres_repository.go`; `go vet ./...`; `go test ./...`
+- Results: Day 10 is in progress with the first database repository increment implemented and validated at compile time
+- Problems encountered: no PostgreSQL driver or live database is wired yet, so runtime DB connectivity and queries are not validated in this step
+- Decisions made: keep the current file-backed app flow temporarily while introducing the DB repository boundary behind `database/sql`
+- Topics to revisit: mapping unique-constraint errors to `ErrJobAlreadyExists`; switching the app startup path from `LoadStore(...)` to a real database handle
+- Next action: wire a real `*sql.DB` into startup, verify connectivity with `PingContext`, and route operations through the repository
+
+

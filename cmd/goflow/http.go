@@ -18,6 +18,14 @@ type apiError struct {
 	Message string `json:"message"`
 }
 
+type apiHandler struct {
+	store goflow.JobStore
+}
+
+func newAPIHandler(store goflow.JobStore) *apiHandler {
+	return &apiHandler{store: store}
+}
+
 func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -30,7 +38,7 @@ func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 	})
 }
 
-func liveHandler(w http.ResponseWriter, r *http.Request) {
+func (h *apiHandler) liveHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
 		return
@@ -44,36 +52,36 @@ func liveHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func jobsHandler(w http.ResponseWriter, r *http.Request) {
+func (h *apiHandler) jobsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		listJobsHandler(w, r)
+		h.listJobsHandler(w, r)
 	case http.MethodPost:
-		createJobHandler(w, r)
+		h.createJobHandler(w, r)
 	default:
 		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
 	}
 }
 
-func listJobsHandler(w http.ResponseWriter, r *http.Request) {
+func (h *apiHandler) listJobsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
 		return
 	}
 
-	store, err := goflow.LoadStore(jobsFile)
+	jobs, err := h.store.List(r.Context())
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "STORE_LOAD_FAILED", "Failed to load jobs")
+		writeJSONError(w, http.StatusInternalServerError, "JOB_LIST_FAILED", "Failed to list jobs")
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	json.NewEncoder(w).Encode(store.List())
+	json.NewEncoder(w).Encode(jobs)
 }
 
-func getJobHandler(w http.ResponseWriter, r *http.Request) {
+func (h *apiHandler) getJobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
 		return
@@ -85,13 +93,7 @@ func getJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store, err := goflow.LoadStore(jobsFile)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "STORE_LOAD_FAILED", "Failed to load jobs")
-		return
-	}
-
-	job, err := store.Get(id)
+	job, err := h.store.Get(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, goflow.ErrJobNotFound) {
 			writeJSONError(w, http.StatusNotFound, "JOB_NOT_FOUND", "The requested job does not exist")
@@ -111,7 +113,7 @@ type createJobRequest struct {
 	Type string `json:"type"`
 }
 
-func createJobHandler(w http.ResponseWriter, r *http.Request) {
+func (h *apiHandler) createJobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
 		return
@@ -144,27 +146,27 @@ func createJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store, err := goflow.LoadStore(jobsFile)
+	jobID, err := newJobID()
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "STORE_LOAD_FAILED", "Failed to load jobs")
+		writeJSONError(w, http.StatusInternalServerError, "JOB_ID_GENERATION_FAILED", "Failed to generate job ID")
 		return
 	}
 
 	job := goflow.Job{
-		ID:          fmt.Sprintf("job-%d", len(store.List())+1),
+		ID:          jobID,
 		Type:        req.Type,
 		Status:      goflow.StatusPending,
 		Attempts:    0,
 		MaxAttempts: 3,
 	}
 
-	if err := store.Create(job); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "JOB_CREATE_FAILED", "Failed to create job")
-		return
-	}
+	if err := h.store.Create(r.Context(), job); err != nil {
+		if errors.Is(err, goflow.ErrJobAlreadyExists) {
+			writeJSONError(w, http.StatusConflict, "JOB_ALREADY_EXISTS", fmt.Sprintf("Job %s already exists", job.ID))
+			return
+		}
 
-	if err := store.Save(jobsFile); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "JOB_SAVE_FAILED", "Failed to save job")
+		writeJSONError(w, http.StatusInternalServerError, "JOB_CREATE_FAILED", "Failed to create job")
 		return
 	}
 

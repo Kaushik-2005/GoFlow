@@ -1,14 +1,20 @@
 package goflow
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
-type JobReaderWriter interface {
-	Get(id string) (Job, error)
-	Update(job Job) error
+type JobStore interface {
+	Create(ctx context.Context, job Job) error
+	Get(ctx context.Context, id string) (Job, error)
+	List(ctx context.Context) ([]Job, error)
+	Update(ctx context.Context, job Job) error
+	Delete(ctx context.Context, id string) error
 }
 
-func StartJob(store JobReaderWriter, id string) error {
-	job, err := store.Get(id)
+func StartJob(ctx context.Context, store JobStore, id string) error {
+	job, err := store.Get(ctx, id)
 	if err != nil {
 		return fmt.Errorf("start job %q: %w", id, err)
 	}
@@ -22,7 +28,7 @@ func StartJob(store JobReaderWriter, id string) error {
 
 	job.MarkRunning()
 
-	if err := store.Update(job); err != nil {
+	if err := store.Update(ctx, job); err != nil {
 		return fmt.Errorf("start job %q: %w", id, err)
 	}
 

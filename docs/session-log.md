@@ -546,3 +546,186 @@
 ### Next session
 
 - Start Day 10, Module 2.4 with PostgreSQL and `database/sql` on 2026-08-30
+
+## 2026-09-01 — Module 2.4 repository implementation step
+
+### Topics covered
+
+- `sql.DB` as a long-lived handle
+- `PingContext(...)`
+- `QueryRowContext(...)`, `QueryContext(...)`, and `ExecContext(...)`
+- `Scan(...)`, `rows.Close()`, and `rows.Err()`
+- Parameterized SQL and SQL injection prevention
+- Repository boundaries for storage replacement
+
+### Work completed
+
+- Added `internal/goflow/postgres_repository.go`
+- Added a context-aware `JobRepository` interface
+- Implemented PostgreSQL-backed `Create`, `Get`, `List`, `Update`, and `Delete`
+- Centralized row scanning in `scanJob(...)`
+- Added `migrations/001_create_jobs.sql`
+- Updated tracker, learning notes, design notes, and decisions for the Day 10 increment
+
+### Commands run
+
+- `Get-Content -LiteralPath 'Go_Industry_Roadmap_4_Weeks.md'`
+- `Get-Content -LiteralPath 'docs/tracker.md'`
+- `Get-Content -LiteralPath 'docs/learning.md'`
+- `Get-Content -LiteralPath 'docs/session-log.md'`
+- `Get-Content -LiteralPath 'internal/goflow/store.go'`
+- `Get-Content -LiteralPath 'internal/goflow/job.go'`
+- `Get-Content -LiteralPath 'internal/goflow/service.go'`
+- `gofmt -w ./internal/goflow/postgres_repository.go`
+- `go vet ./...`
+- `go test ./...`
+
+### Problems encountered
+
+- The local sandbox helper kept failing, so file reads and writes had to be rerun with elevated access
+- `docs/design.md` had malformed Markdown fences and had to be rebuilt cleanly
+- No PostgreSQL driver or live database is wired yet, so runtime DB behavior remains unvalidated
+
+### What I understood well
+
+- `Get(id)` should use `QueryRowContext(...)`
+- `List()` should use `QueryContext(...)`
+- `Scan(...)` destinations must match query column order
+- Parameterized queries prevent SQL injection better than string interpolation
+- A repository boundary reduces how far persistence changes spread
+
+### What needs revision
+
+- Add driver setup and `PingContext(...)` in startup
+- Replace the JSON-backed runtime path with the PostgreSQL repository
+- Map database duplicate-key failures to `ErrJobAlreadyExists`
+
+### Next session
+
+- Wire a real `*sql.DB` into startup and move one app path from JSON-file persistence to PostgreSQL
+
+## 2026-09-01 — Module 2.4 runtime switch
+
+### Topics covered
+
+- `sql.DB` startup and pooling
+- `PingContext(...)`
+- PostgreSQL driver wiring
+- Context-aware repository calls
+- Replacing file-backed runtime flow with PostgreSQL
+- Automatic migration execution at startup
+
+### Work completed
+
+- Added `github.com/lib/pq`
+- Added `cmd/goflow/database.go`
+- Switched the CLI commands to PostgreSQL-backed persistence
+- Switched HTTP handlers to a shared store dependency
+- Updated `StartJob(...)` to use `context.Context`
+- Added duplicate-key mapping for PostgreSQL errors
+- Replaced sequential ID generation with random IDs
+- Ran `go mod tidy`, `go vet ./...`, and `go test ./...`
+- Updated tracker, learning notes, design notes, and README
+
+### Commands run
+
+- `Get-Content -LiteralPath 'cmd/goflow/main.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/http.go'`
+- `Get-Content -LiteralPath 'internal/goflow/postgres_repository.go'`
+- `Get-Content -LiteralPath 'internal/goflow/service.go'`
+- `Get-Content -LiteralPath 'go.mod'`
+- `go get github.com/lib/pq`
+- `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/database.go ./internal/goflow/service.go ./internal/goflow/postgres_repository.go`
+- `go mod tidy`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow list`
+- `docker ps -a`
+
+### Problems encountered
+
+- The Windows sandbox helper still blocked normal patch-based edits
+- `DATABASE_URL` is not set in this environment
+- `psql` is not installed here
+- Docker Desktop is not running, so local PostgreSQL validation could not be started from Docker
+
+### What I understood well
+
+- Why `sql.DB` should be opened once and reused
+- Why `PingContext(...)` belongs in startup
+- Why handlers should use request context for DB work
+- Why the storage swap belongs behind a repository boundary
+- Why parameterized queries and duplicate-key mapping matter at the repository layer
+
+### What needs revision
+
+- Validate the new runtime against a real PostgreSQL instance
+- Add repository and handler tests in Module 2.5
+- Revisit whether `payload` should evolve from `BYTEA` to `JSONB`
+
+### Next session
+
+- Start a PostgreSQL instance, set `DATABASE_URL`, and validate the CLI plus HTTP paths end to end before moving to Module 2.5
+
+## 2026-09-01 — Module 2.4 runtime switch
+
+### Topics covered
+
+- `sql.DB` startup and pooling
+- `PingContext(...)`
+- PostgreSQL driver wiring
+- Context-aware repository calls
+- Replacing file-backed runtime flow with PostgreSQL
+- Automatic migration execution at startup
+
+### Work completed
+
+- Added `github.com/lib/pq`
+- Added `cmd/goflow/database.go`
+- Switched the CLI commands to PostgreSQL-backed persistence
+- Switched HTTP handlers to a shared store dependency
+- Updated `StartJob(...)` to use `context.Context`
+- Added duplicate-key mapping for PostgreSQL errors
+- Replaced sequential ID generation with random IDs
+- Ran `go mod tidy`, `go vet ./...`, and `go test ./...`
+- Updated tracker, learning notes, design notes, and README
+
+### Commands run
+
+- `Get-Content -LiteralPath 'cmd/goflow/main.go'`
+- `Get-Content -LiteralPath 'cmd/goflow/http.go'`
+- `Get-Content -LiteralPath 'internal/goflow/postgres_repository.go'`
+- `Get-Content -LiteralPath 'internal/goflow/service.go'`
+- `Get-Content -LiteralPath 'go.mod'`
+- `go get github.com/lib/pq`
+- `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/database.go ./internal/goflow/service.go ./internal/goflow/postgres_repository.go`
+- `go mod tidy`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow list`
+- `docker ps -a`
+
+### Problems encountered
+
+- The Windows sandbox helper still blocked normal patch-based edits
+- `DATABASE_URL` is not set in this environment
+- `psql` is not installed here
+- Docker Desktop is not running, so local PostgreSQL validation could not be started from Docker
+
+### What I understood well
+
+- Why `sql.DB` should be opened once and reused
+- Why `PingContext(...)` belongs in startup
+- Why handlers should use request context for DB work
+- Why the storage swap belongs behind a repository boundary
+- Why parameterized queries and duplicate-key mapping matter at the repository layer
+
+### What needs revision
+
+- Validate the new runtime against a real PostgreSQL instance
+- Add repository and handler tests in Module 2.5
+- Revisit whether `payload` should evolve from `BYTEA` to `JSONB`
+
+### Next session
+
+- Start a PostgreSQL instance, set `DATABASE_URL`, and validate the CLI plus HTTP paths end to end before moving to Module 2.5

@@ -1,14 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"goflow/internal/goflow"
 	"net/http"
 	"os"
+	"time"
 )
-
-const jobsFile = "jobs.json"
 
 func requireArg(args []string, index int, message string) (string, bool) {
 	if len(args) <= index {
@@ -21,6 +21,7 @@ func requireArg(args []string, index int, message string) (string, bool) {
 func printHelp() {
 	fmt.Println("Usage: goflow <command>")
 	fmt.Println("Commands: list, create, get, process, serve")
+	fmt.Println("Environment: DATABASE_URL must point to PostgreSQL")
 }
 
 func main() {
@@ -33,13 +34,21 @@ func main() {
 
 	switch command {
 	case "list":
-		store, err := goflow.LoadStore(jobsFile)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		store, db, err := openPostgresStore(ctx)
 		if err != nil {
-			fmt.Printf("failed to load jobs: %v\n", err)
+			fmt.Printf("failed to open store: %v\n", err)
 			return
 		}
+		defer db.Close()
 
-		jobs := store.List()
+		jobs, err := store.List(ctx)
+		if err != nil {
+			fmt.Printf("failed to list jobs: %v\n", err)
+			return
+		}
 		if len(jobs) == 0 {
 			fmt.Println("no jobs found")
 			return
@@ -53,31 +62,36 @@ func main() {
 			return
 		}
 
-		store, err := goflow.LoadStore(jobsFile)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		store, db, err := openPostgresStore(ctx)
 		if err != nil {
-			fmt.Printf("failed to load jobs: %v\n", err)
+			fmt.Printf("failed to open store: %v\n", err)
+			return
+		}
+		defer db.Close()
+
+		jobID, err := newJobID()
+		if err != nil {
+			fmt.Printf("failed to create job id: %v\n", err)
 			return
 		}
 
 		job := goflow.Job{
-			ID:          fmt.Sprintf("job-%d", len(store.List())+1),
+			ID:          jobID,
 			Type:        jobType,
 			Status:      goflow.StatusPending,
 			Attempts:    0,
 			MaxAttempts: 3,
 		}
 
-		if err := store.Create(job); err != nil {
+		if err := store.Create(ctx, job); err != nil {
 			if errors.Is(err, goflow.ErrJobAlreadyExists) {
 				fmt.Printf("job already exists: %s\n", job.ID)
 				return
 			}
 			fmt.Printf("failed to create job: %v\n", err)
-			return
-		}
-
-		if err := store.Save(jobsFile); err != nil {
-			fmt.Printf("failed to save jobs: %v\n", err)
 			return
 		}
 
@@ -88,13 +102,17 @@ func main() {
 			return
 		}
 
-		store, err := goflow.LoadStore(jobsFile)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		store, db, err := openPostgresStore(ctx)
 		if err != nil {
-			fmt.Printf("failed to load jobs: %v\n", err)
+			fmt.Printf("failed to open store: %v\n", err)
 			return
 		}
+		defer db.Close()
 
-		job, err := store.Get(jobID)
+		job, err := store.Get(ctx, jobID)
 		if err != nil {
 			if errors.Is(err, goflow.ErrJobNotFound) {
 				fmt.Printf("job not found: %s\n", jobID)
@@ -111,13 +129,17 @@ func main() {
 			return
 		}
 
-		store, err := goflow.LoadStore(jobsFile)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		store, db, err := openPostgresStore(ctx)
 		if err != nil {
-			fmt.Printf("failed to load jobs: %v\n", err)
+			fmt.Printf("failed to open store: %v\n", err)
 			return
 		}
+		defer db.Close()
 
-		err = goflow.StartJob(store, jobID)
+		err = goflow.StartJob(ctx, store, jobID)
 		if err != nil {
 			if errors.Is(err, goflow.ErrJobNotFound) {
 				fmt.Printf("job not found: %s\n", jobID)
@@ -134,17 +156,24 @@ func main() {
 			return
 		}
 
-		if err := store.Save(jobsFile); err != nil {
-			fmt.Printf("failed to save jobs: %v\n", err)
-			return
-		}
-
 		fmt.Printf("processing job: %s\n", jobID)
 	case "serve":
+		startupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		store, db, err := openPostgresStore(startupCtx)
+		if err != nil {
+			fmt.Printf("failed to open store: %v\n", err)
+			return
+		}
+		defer db.Close()
+
+		api := newAPIHandler(store)
+
 		mux := http.NewServeMux()
-		mux.HandleFunc("/health/live", liveHandler)
-		mux.HandleFunc("/v1/jobs", jobsHandler)
-		mux.HandleFunc("/v1/jobs/", getJobHandler)
+		mux.HandleFunc("/health/live", api.liveHandler)
+		mux.HandleFunc("/v1/jobs", api.jobsHandler)
+		mux.HandleFunc("/v1/jobs/", api.getJobHandler)
 
 		handler := chain(
 			mux,
@@ -160,7 +189,7 @@ func main() {
 		}
 
 		fmt.Println("starting server on :8080")
-		if err := server.ListenAndServe(); err != nil {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Printf("server error: %v\n", err)
 		}
 	default:

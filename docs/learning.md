@@ -1164,6 +1164,165 @@ The outer app layer in `cmd/goflow` now imports `internal/goflow` for:
 
 ### Day 10: Module 2.4 - PostgreSQL and `database/sql`
 
+#### Concept
+
+`database/sql` is Go's standard abstraction for relational database access. The key mental model is that your application code should talk to a long-lived `*sql.DB` handle, while repository methods perform context-aware queries through `QueryRowContext(...)`, `QueryContext(...)`, and `ExecContext(...)`.
+
+In GoFlow, Module 2.4 replaced the old JSON-file runtime path with a PostgreSQL-backed repository and startup flow.
+
+#### Why it matters
+
+- File persistence is not a safe long-term storage boundary for a real API.
+- A repository boundary limits how far storage changes spread through the codebase.
+- `context.Context` lets database calls respect cancellation and timeouts.
+- Parameterized SQL prevents SQL injection.
+- `sql.DB` should be created once and reused because it manages a connection pool.
+
+#### Mental model
+
+Think of `*sql.DB` as a managed handle plus connection pool, not one permanently-open connection.
+
+- `sql.Open(...)` creates the handle.
+- `PingContext(...)` proves the database is reachable.
+- `ExecContext(...)` is for statements like `INSERT`, `UPDATE`, and `DELETE`.
+- `QueryRowContext(...)` is for one expected row.
+- `QueryContext(...)` is for many rows and returns `Rows`, which must be closed.
+- `Scan(...)` copies SQL columns into Go variables in positional order.
+
+#### Syntax
+
+```go
+row := db.QueryRowContext(ctx, `
+	SELECT id, job_type, status
+	FROM jobs
+	WHERE id = $1
+`, id)
+
+var job Job
+var status string
+err := row.Scan(&job.ID, &job.Type, &status)
+if err != nil {
+	return Job{}, err
+}
+
+job.Status = JobStatus(status)
+```
+
+```go
+rows, err := db.QueryContext(ctx, `
+	SELECT id, job_type, status
+	FROM jobs
+	ORDER BY created_at ASC, id ASC
+`)
+if err != nil {
+	return nil, err
+}
+defer rows.Close()
+```
+
+```go
+_, err := db.ExecContext(ctx, `
+	UPDATE jobs
+	SET status = $2, updated_at = NOW()
+	WHERE id = $1
+`, id, StatusRunning)
+```
+
+#### Idiomatic Go points
+
+- Pass `context.Context` as the first parameter for DB-facing operations.
+- Reuse one `*sql.DB` instead of opening a new handle for each query.
+- `PingContext(...)` is the explicit startup connectivity check.
+- Always `defer rows.Close()` after a successful `QueryContext(...)`.
+- Check `rows.Err()` after iteration.
+- Wrap errors with operation context.
+- Use parameters like `$1` and `$2` instead of interpolating user input.
+
+#### Python comparison
+
+- This is similar to a repository over `psycopg`, but Go makes cancellation, cleanup, and returned errors more explicit.
+- In Python, exceptions usually propagate automatically; in Go, repository methods return errors directly.
+- In Python, context managers often hide cleanup; in Go, `defer rows.Close()` makes it visible.
+
+#### Common mistakes
+
+- Assuming `sql.Open(...)` already validated connectivity.
+- Building SQL with string concatenation.
+- Forgetting `rows.Close()`.
+- Forgetting `rows.Err()`.
+- Mismatching `Scan(...)` destinations with selected column order.
+- Letting handlers know too much about SQL instead of depending on a repository boundary.
+
+#### Project application
+
+Module 2.4 now uses PostgreSQL as the active runtime target.
+
+Files added or updated:
+
+- `cmd/goflow/database.go`
+- `cmd/goflow/main.go`
+- `cmd/goflow/http.go`
+- `internal/goflow/service.go`
+- `internal/goflow/postgres_repository.go`
+- `migrations/001_create_jobs.sql`
+
+The important runtime changes are:
+
+- `DATABASE_URL` is now required.
+- `openPostgresStore(...)` opens `*sql.DB`, configures pooling, runs `PingContext(...)`, and applies the initial schema.
+- CLI commands now call PostgreSQL through the repository instead of loading `jobs.json`.
+- HTTP handlers now use a shared store dependency and request context instead of reopening file storage per request.
+- `StartJob(...)` now accepts `context.Context` and a shared `JobStore` dependency.
+- Job IDs are generated with random bytes instead of `len(list)+1`.
+- PostgreSQL duplicate-key errors are mapped to `ErrJobAlreadyExists`.
+
+The current store contract is:
+
+```go
+type JobStore interface {
+	Create(ctx context.Context, job Job) error
+	Get(ctx context.Context, id string) (Job, error)
+	List(ctx context.Context) ([]Job, error)
+	Update(ctx context.Context, job Job) error
+	Delete(ctx context.Context, id string) error
+}
+```
+
+#### Production implications
+
+- The app now targets a real database boundary instead of local file persistence.
+- HTTP request context can now flow into database calls.
+- Pool configuration is explicit instead of hidden.
+- The storage swap happened without pushing SQL details into handlers.
+- Runtime validation is still pending because this environment does not currently have a live PostgreSQL instance.
+
+#### Interview questions
+
+1. Why should `*sql.DB` be reused instead of reopened for each operation?
+2. Why does `PingContext(...)` matter after `sql.Open(...)`?
+3. Why is `QueryRowContext(...)` better than `QueryContext(...)` for `Get(id)`?
+4. Why must `rows.Close()` and `rows.Err()` both be handled?
+5. Why should repository methods accept `context.Context`?
+6. Why are parameterized queries safer than string interpolation?
+7. Why is replacing file storage easier when the service depends on a repository boundary?
+
+#### References
+
+- Executing SQL statements: https://go.dev/doc/database/change-data
+- Querying for data: https://go.dev/doc/database/querying
+- Canceling in-progress operations: https://go.dev/doc/database/cancel-operations
+- Managing connections: https://go.dev/doc/database/manage-connections
+- `database/sql` package docs: https://pkg.go.dev/database/sql
+
+#### My questions and corrections
+
+- `*sql.DB` should be created once and reused; it is a pool manager, not one connection.
+- `PingContext(...)` is the real connectivity check.
+- `Get(id)` should use `QueryRowContext(...)`, while `List()` should use `QueryContext(...)`.
+- `rows` is a live cursor and must be closed.
+- SQL injection happens when untrusted input is merged into query text instead of passed as parameters.
+- Replacing storage cleanly is easier when the service depends on a store interface instead of file helpers.
+
 ### Day 11: Module 2.5 - Testing Fundamentals
 
 ## Module 3: Concurrency and Reliable Background Processing
@@ -1193,6 +1352,8 @@ The outer app layer in `cmd/goflow` now imports `internal/goflow` for:
 ### Day 23: Module 4.5 - Containers and Configuration
 
 ### Day 24: Module 4.6 - CI and Engineering Workflow
+
+
 
 
 
