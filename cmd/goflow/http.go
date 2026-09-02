@@ -63,6 +63,17 @@ func (h *apiHandler) jobsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *apiHandler) jobByIDHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.getJobHandler(w, r)
+	case http.MethodDelete:
+		h.deleteJobHandler(w, r)
+	default:
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
+	}
+}
+
 func (h *apiHandler) listJobsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
@@ -73,6 +84,17 @@ func (h *apiHandler) listJobsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "JOB_LIST_FAILED", "Failed to list jobs")
 		return
+	}
+
+	statusFilter := r.URL.Query().Get("status")
+	if statusFilter != "" {
+		filtered := make([]goflow.Job, 0, len(jobs))
+		for _, job := range jobs {
+			if string(job.Status) == statusFilter {
+				filtered = append(filtered, job)
+			}
+		}
+		jobs = filtered
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -107,6 +129,31 @@ func (h *apiHandler) getJobHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	json.NewEncoder(w).Encode(job)
+}
+
+func (h *apiHandler) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
+	if id == "" {
+		writeJSONError(w, http.StatusBadRequest, "JOB_ID_REQUIRED", "A job ID is required")
+		return
+	}
+
+	if err := h.store.Delete(r.Context(), id); err != nil {
+		if errors.Is(err, goflow.ErrJobNotFound) {
+			writeJSONError(w, http.StatusNotFound, "JOB_NOT_FOUND", "The requested job does not exist")
+			return
+		}
+
+		writeJSONError(w, http.StatusInternalServerError, "JOB_DELETE_FAILED", "Failed to delete job")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type createJobRequest struct {

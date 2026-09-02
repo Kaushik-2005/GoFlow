@@ -1325,39 +1325,170 @@ type JobStore interface {
 
 ### Day 11: Module 2.5 - Testing Fundamentals
 
-## Module 3: Concurrency and Reliable Background Processing
+#### Concept
 
-### Day 13: Module 3.1 - Goroutines and Channels
+Testing in Go is just normal Go code organized into `_test.go` files and executed by the `testing` package. For GoFlow, Day 11 turned the current PostgreSQL-backed API into a tested Week 2 milestone by covering service behavior, HTTP handlers, repository SQL behavior, and one live PostgreSQL integration path.
 
-### Day 14: Module 3.2 - Synchronization
+#### Why it matters
 
-### Day 15: Module 3.3 - Worker Pool
+- Tests protect behavior while the codebase keeps changing.
+- Service tests let us validate state transitions without a real database.
+- Handler tests validate HTTP status codes, JSON responses, validation failures, and consistent error contracts.
+- Repository tests validate SQL behavior, duplicate-key mapping, and not-found handling.
+- Integration tests prove the repository works against a real PostgreSQL instance, not just fakes.
 
-### Day 16: Module 3.4 - Context, Cancellation, and Graceful Shutdown
+#### Mental model
 
-### Day 17: Module 3.5 - Retries and Failure Handling
+Think in layers:
 
-### Day 18: Module 3.6 - Concurrency Testing
+- service tests check business rules directly
+- handler tests check transport behavior using fake dependencies
+- repository tests check SQL interactions using `sqlmock`
+- integration tests check the real database path with `database/sql` and PostgreSQL
 
-## Module 4: Production Readiness, Performance, Security, and Deployment
+A Go test still follows the same basic flow:
 
-### Day 19: Module 4.1 - Structured Logging
+- arrange inputs and dependencies
+- call the function or handler
+- assert the observed result
 
-### Day 20: Module 4.2 - Observability
+#### Syntax
 
-### Day 21: Module 4.3 - Profiling and Performance
+```go
+func TestSomething(t *testing.T) {
+	got := someFunction()
+	if got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+```
 
-### Day 22: Module 4.4 - Security
+```go
+request := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+response := httptest.NewRecorder()
+api.liveHandler(response, request)
+```
 
-### Day 23: Module 4.5 - Containers and Configuration
+```go
+for _, tt := range tests {
+	t.Run(tt.name, func(t *testing.T) {
+		// run one case
+	})
+}
+```
 
-### Day 24: Module 4.6 - CI and Engineering Workflow
+#### Idiomatic Go points
 
+- Put tests in `_test.go` files.
+- Keep tests focused on observable behavior.
+- Use handwritten fakes when a full real dependency would add noise.
+- Use table-driven tests when many cases share the same structure.
+- Use `httptest` for handler tests instead of depending on a running server.
+- Use `sqlmock` when you want to verify SQL-layer behavior without a live database.
+- Use `t.Cleanup(...)` to close mocks and shared resources reliably.
 
+#### Python comparison
 
+- This is similar to `pytest`, but Go starts with the standard library instead of a third-party framework.
+- A handwritten fake in Go plays a similar role to a simple Python stub, but it is usually just a struct with methods.
+- `httptest` is similar in purpose to a test client, but it works directly with handlers.
 
+#### Common mistakes
 
+- Writing tests that depend on a real database when a fake or mock is enough.
+- Forgetting to cover failure paths alongside the happy path.
+- Repeating nearly identical setup instead of using table-driven tests.
+- Asserting implementation details instead of outward behavior.
+- Stopping at service tests and never validating the repository boundary.
 
+#### Project application
 
+Day 11 completed the first full testing layer for GoFlow.
 
+Files added or updated:
 
+- `internal/goflow/service_test.go`
+- `cmd/goflow/http_test.go`
+- `internal/goflow/postgres_repository_test.go`
+- `internal/goflow/postgres_repository_integration_test.go`
+
+Service-layer coverage includes:
+
+- `TestStartJobSuccess`
+- `TestStartJobInvalidStatus`
+- `TestStartJobNotFound`
+- `TestStartJobUpdateFailure`
+
+These tests use a handwritten `fakeJobStore` to verify:
+
+- `StartJob(...)` updates a pending job to `StatusRunning`
+- invalid status returns `InvalidJobStatusError`
+- not-found and update failures are surfaced correctly
+- `Update(...)` is not called when the state transition is invalid
+
+HTTP handler coverage includes:
+
+- `TestLiveHandler`
+- `TestJobsHandlerMethodNotAllowed`
+- `TestJobByIDHandlerMethodNotAllowed`
+- `TestListJobsHandler`
+- `TestGetJobHandler`
+- `TestDeleteJobHandler`
+- `TestCreateJobHandler`
+
+The handler tests now cover:
+
+- health check success and method rejection
+- list success, list failure, and `status` filtering
+- get success, not found, store failure, and missing ID
+- delete success, not found, store failure, and missing ID
+- create success, missing type, invalid JSON, duplicate job, and generic store failure
+
+Repository coverage includes:
+
+- `TestPostgresRepositoryCreate`
+- `TestPostgresRepositoryGet`
+- `TestPostgresRepositoryList`
+- `TestPostgresRepositoryUpdate`
+- `TestPostgresRepositoryDelete`
+- `TestPostgresRepositoryIntegration`
+
+The repository tests now verify:
+
+- duplicate-key mapping to `ErrJobAlreadyExists`
+- not-found mapping to `ErrJobNotFound`
+- list ordering behavior from the SQL query
+- update and delete row-count checks
+- create/get/list/update/delete against a real PostgreSQL instance when `DATABASE_URL` is set
+
+This completed the Week 2 deliverable: a tested PostgreSQL-backed REST API that can create, retrieve, list, filter, and delete jobs while validating requests and returning consistent errors.
+
+#### Production implications
+
+- Tests make refactoring safer as the project moves toward concurrency and background processing.
+- Layered tests catch bugs at different boundaries instead of trusting only one level.
+- Repository tests are where SQL mapping and constraint behavior become visible.
+- Live integration validation matters because mocks cannot prove real driver or database behavior.
+
+#### Interview questions
+
+1. Why are handwritten fakes useful at the service layer?
+2. What problem does `httptest` solve?
+3. Why would a repository layer use `sqlmock` and also a real integration test?
+4. What is the difference between a unit test and an integration test here?
+5. Why should tests cover failure paths, not only success paths?
+
+#### References
+
+- Package testing: https://pkg.go.dev/testing
+- Package net/http/httptest: https://pkg.go.dev/net/http/httptest
+- Go blog, Testable Examples in Go: https://go.dev/blog/examples
+- Package database/sql: https://pkg.go.dev/database/sql
+
+#### My questions and corrections
+
+- A fake must satisfy the same interface the production code depends on.
+- `httptest` is enough for handler tests because handlers are ordinary functions over request and response types.
+- `sqlmock` gives repository-level control over SQL expectations, while the real PostgreSQL integration test proves the live path.
+- PowerShell needed `go test --% -coverprofile=coverage.out ./...` so the coverage file argument was passed correctly.
+- Adding filter and delete handler coverage was necessary to match the exact Week 2 roadmap deliverable.

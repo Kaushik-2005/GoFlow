@@ -257,10 +257,10 @@ sequenceDiagram
 
 ## Known Current Limitations
 
-- Runtime validation against a live PostgreSQL instance has not been completed in this environment because `DATABASE_URL` is unset and no local database is running.
+- Live PostgreSQL validation completed on 2026-09-02 through the repository integration test and real HTTP requests.
 - The current schema still uses `BYTEA` for `payload`, which is simpler than the roadmap's suggested `JSONB` shape.
-- Docker is installed, but Docker Desktop is not running here, so a local PostgreSQL container could not be started for validation.
-- There are still no automated tests covering the PostgreSQL repository or handler integration paths.
+- The runtime was validated against a Docker-based PostgreSQL 16 container named `goflow-postgres`.
+- Repository behavior now has `sqlmock` tests plus a real integration-test entry point.
 - Content-type validation is still strict and does not yet allow variants like `application/json; charset=utf-8`.
 
 ## Related Documents
@@ -269,3 +269,66 @@ sequenceDiagram
 - `docs/learning.md`
 - `docs/session-log.md`
 - `docs/decisions.md`
+
+## Day 11 - Module 2.5: Testing Layer Introduction
+
+### Goal
+
+Complete the first real testing layer for the PostgreSQL-backed API and ensure the Week 2 HTTP surface matches the roadmap deliverable.
+
+### Design change
+
+- Added `internal/goflow/service_test.go` for service-layer behavior.
+- Added `cmd/goflow/http_test.go` for handler-level HTTP behavior.
+- Added `internal/goflow/postgres_repository_test.go` for repository unit tests with `sqlmock`.
+- Added `internal/goflow/postgres_repository_integration_test.go` for the real PostgreSQL path.
+- Extended the HTTP API to support `DELETE /v1/jobs/{id}` and `GET /v1/jobs?status=...`.
+- Introduced `jobByIDHandler` so one path can dispatch by method for single-job operations.
+
+### Testing boundaries
+
+- Service tests validate state-transition rules.
+- Handler tests validate status codes, JSON bodies, validation failures, filtering, and deletion behavior.
+- Repository tests validate SQL interactions and error mapping.
+- Integration tests validate the live PostgreSQL path.
+
+### Diagram
+
+```mermaid
+flowchart TD
+    ServiceTests[service_test.go] --> Service[StartJob]
+    Service --> FakeStore[fakeJobStore]
+    HandlerTests[http_test.go] --> Handlers[HTTP handlers]
+    Handlers --> FakeAPIStore[fakeAPIStore]
+    HandlerTests --> HTTPTest[httptest request/recorder]
+    RepoTests[postgres_repository_test.go] --> SQLMock[sqlmock]
+    Integration[TestPostgresRepositoryIntegration] --> Postgres[(PostgreSQL)]
+```
+
+### Flow
+
+```mermaid
+sequenceDiagram
+    participant Test as test case
+    participant Boundary as service, handler, or repository
+    participant Double as fake, sqlmock, or PostgreSQL
+
+    Test->>Boundary: call function or handler
+    Boundary->>Double: use dependency
+    Double-->>Boundary: controlled or real result
+    Boundary-->>Test: response or error
+    Test-->>Test: assert status, body, state change, or DB effect
+```
+
+### Why this matters
+
+- Testing now matches the architecture boundaries introduced earlier.
+- The HTTP API now matches the Week 2 roadmap surface: create, retrieve, list, filter, and delete.
+- Repository tests reduce the risk of silent SQL regressions.
+- Live integration validation proves the PostgreSQL runtime, not just the test doubles.
+
+## Day 11 Validation Update
+
+- Live PostgreSQL integration was validated on 2026-09-02 with Docker PostgreSQL, `TestPostgresRepositoryIntegration`, and real HTTP requests to `/health/live`, `/v1/jobs`, and `/v1/jobs/{id}`.
+- The test strategy now has four useful levels: service fakes, handler tests with `httptest`, repository tests with `sqlmock`, and a real database integration path.
+- The Week 2 API surface now includes both `status` filtering on `GET /v1/jobs` and deletion through `DELETE /v1/jobs/{id}`.

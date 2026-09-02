@@ -173,7 +173,7 @@ func main() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/health/live", api.liveHandler)
 		mux.HandleFunc("/v1/jobs", api.jobsHandler)
-		mux.HandleFunc("/v1/jobs/", api.getJobHandler)
+		mux.HandleFunc("/v1/jobs/", api.jobByIDHandler)
 
 		handler := chain(
 			mux,

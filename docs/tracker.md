@@ -3,11 +3,11 @@
 ## Current Position
 
 - Current week: Week 2
-- Current module: Day 10 - Module 2.4
-- Current topic: PostgreSQL and `database/sql`
-- Current task: Validate the PostgreSQL-backed CLI and HTTP flows against a live database on 2026-09-01
-- Next milestone: Start a local PostgreSQL instance, set `DATABASE_URL`, and verify create/list/get/process plus HTTP endpoints end to end
-- Active blockers: `DATABASE_URL` is not set and no local PostgreSQL instance is currently available in this environment
+- Current module: Day 12 - Week 2 checkpoint
+- Current topic: Week 2 checkpoint and revision
+- Current task: Run the Week 2 checkpoint on 2026-09-02 now that Module 2.5 is complete
+- Next milestone: Start the Week 2 checkpoint before moving into Day 13 - Module 3.1
+- Active blockers: None for current testing work; live PostgreSQL validation completed on 2026-09-02
 
 ## Roadmap Progress
 
@@ -22,8 +22,8 @@
 | 7 | Module 2.1 | HTTP servers | Completed | First `net/http` API endpoints | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/store.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`; `curl http://localhost:8080/v1/jobs`; `curl http://localhost:8080/v1/jobs/job-1`; `Invoke-RestMethod -Method POST -Uri http://localhost:8080/v1/jobs -ContentType application/json -Body '{"type":"email"}'`; learner explained handlers, mux routing, method dispatch, status codes, JSON request/response handling, path extraction, and API error shape | 4 |
 | 8 | Module 2.2 | Middleware and API reliability | Completed | Request middleware stack and reliability guards | `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/middleware.go ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `curl -i http://localhost:8080/health/live`; `Invoke-WebRequest -Method POST -Uri http://localhost:8080/v1/jobs -ContentType text/plain -Body '{"type":"email"}'`; oversized POST returned `REQUEST_BODY_TOO_LARGE`; learner explained middleware order, recovery, request IDs, body limits, and content-type enforcement | 4 |
 | 9 | Module 2.3 | Project organization and architecture | Completed | Clear layered structure for API and worker code | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/middleware.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`; learner explained why reusable core logic must leave `package main`, why handlers should not import `main`, and why `main` should stay thin | 4 |
-| 10 | Module 2.4 | PostgreSQL and `database/sql` | Implementing | PostgreSQL-backed CLI and HTTP runtime with automatic schema setup | `go get github.com/lib/pq`; `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/database.go ./internal/goflow/service.go ./internal/goflow/postgres_repository.go`; `go mod tidy`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow list` returned `failed to open store: DATABASE_URL is not set`, proving the runtime now targets PostgreSQL instead of `jobs.json` | 3 |
-| 11 | Module 2.5 | Testing fundamentals | Not Started | Tested REST API with repository coverage | — | — |
+| 10 | Module 2.4 | PostgreSQL and `database/sql` | Completed | PostgreSQL-backed CLI and HTTP runtime with automatic schema setup | `go test -run TestPostgresRepositoryIntegration ./internal/goflow -v`; `curl.exe http://localhost:8080/health/live`; `curl.exe http://localhost:8080/v1/jobs`; `Invoke-RestMethod -Method POST -Uri "http://localhost:8080/v1/jobs" -ContentType "application/json" -Body '{"type":"email"}'`; `curl.exe http://localhost:8080/v1/jobs/job-70f1178cdbe12194`; learner validated live PostgreSQL integration, list, create, and get over HTTP | 4 |
+| 11 | Module 2.5 | Testing fundamentals | Completed | Tested PostgreSQL-backed REST API with create, retrieve, list, filter, delete, validation, consistent errors, and database-failure coverage | `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/main.go`; `gofmt -w ./internal/goflow/service_test.go ./internal/goflow/postgres_repository_test.go ./internal/goflow/postgres_repository_integration_test.go`; `go vet ./...`; `go test ./...`; `go test -cover ./...`; `go test --% -coverprofile=coverage.out ./...`; learner used handwritten fakes, `httptest`, `sqlmock`, `t.Cleanup`, repository integration testing, and added filter/delete API coverage | 4 |
 | 12 | Week 2 checkpoint | Revision and spillover | Not Started | Checkpoint review and catch-up buffer | — | — |
 | 13 | Module 3.1 | Goroutines and channels | Not Started | First concurrent processing pipeline | — | — |
 | 14 | Module 3.2 | Synchronization | Not Started | Shared-state protection and coordination | — | — |
@@ -149,5 +149,9 @@
 - Decisions made: keep the current file-backed app flow temporarily while introducing the DB repository boundary behind `database/sql`
 - Topics to revisit: mapping unique-constraint errors to `ErrJobAlreadyExists`; switching the app startup path from `LoadStore(...)` to a real database handle
 - Next action: wire a real `*sql.DB` into startup, verify connectivity with `PingContext`, and route operations through the repository
+
+
+
+
 
 

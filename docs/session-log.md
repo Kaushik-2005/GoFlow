@@ -729,3 +729,52 @@
 ### Next session
 
 - Start a PostgreSQL instance, set `DATABASE_URL`, and validate the CLI plus HTTP paths end to end before moving to Module 2.5
+
+## 2026-09-02 — Module 2.5 testing fundamentals completed
+
+### Topics covered
+
+- The `testing` package
+- Handwritten fakes
+- HTTP handler tests with `httptest`
+- Repository tests with `sqlmock`
+- Live PostgreSQL integration testing
+- Coverage commands in PowerShell
+
+### Work completed
+
+- Added service tests for `StartJob(...)`
+- Added HTTP handler tests for health, list, get, create, delete, and method dispatch
+- Added list filtering by `status` in the HTTP layer
+- Added delete support to the HTTP API
+- Added repository tests for create, get, list, update, and delete
+- Verified the repository against a real PostgreSQL instance
+- Completed the Week 2 tested API deliverable
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/main.go`
+- `gofmt -w ./internal/goflow/service_test.go ./internal/goflow/postgres_repository_test.go ./internal/goflow/postgres_repository_integration_test.go`
+- `go vet ./...`
+- `go test ./...`
+- `go test --% -coverprofile=coverage.out ./...`
+
+### Problems encountered
+
+- PowerShell treated the raw `-coverprofile=coverage.out` form incorrectly in this environment, so `--%` was needed to pass the flag through exactly
+- The Week 2 deliverable was not actually complete until filter and delete behavior existed in the HTTP surface as well as the tests
+
+### What I understood well
+
+- Why tests should follow architecture boundaries
+- Why `httptest` is enough for handler testing
+- Why `sqlmock` and a live PostgreSQL test both have value
+- Why roadmap completion depends on implemented behavior, not only test files existing
+
+### What needs revision
+
+- Prepare for the Week 2 checkpoint questions on handler vs service vs repository, context-first APIs, middleware order, and unit vs integration tests
+
+### Next session
+
+- Run the Week 2 checkpoint before starting Day 13 - Module 3.1
