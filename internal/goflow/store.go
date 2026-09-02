@@ -78,23 +78,3 @@ func (s *Store) Delete(id string) error {
 	delete(s.jobs, id)
 	return nil
 }
-
-func (s *Store) Save(filename string) error {
-	jobs := s.List()
-	return saveJobs(filename, jobs)
-}
-
-func LoadStore(filename string) (*Store, error) {
-	jobs, err := loadJobs(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	store := NewStore()
-
-	for _, job := range jobs {
-		store.jobs[job.ID] = job
-	}
-
-	return store, nil
-}
