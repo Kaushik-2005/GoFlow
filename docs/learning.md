@@ -1492,3 +1492,130 @@ This completed the Week 2 deliverable: a tested PostgreSQL-backed REST API that 
 - `sqlmock` gives repository-level control over SQL expectations, while the real PostgreSQL integration test proves the live path.
 - PowerShell needed `go test --% -coverprofile=coverage.out ./...` so the coverage file argument was passed correctly.
 - Adding filter and delete handler coverage was necessary to match the exact Week 2 roadmap deliverable.
+
+### Day 13: Module 3.1 - Goroutines and Channels
+
+#### Concept
+
+This module starts GoFlow's move from a CRUD-style API into a real background-processing system. The first step is learning goroutines, channels, producer/consumer flow, cancellation, and why concurrent code needs clear ownership and termination paths.
+
+#### Why it matters
+
+- Goroutines are how GoFlow will process jobs concurrently instead of synchronously.
+- Channels give a safe, explicit way to hand work from a poller to workers.
+- Cancellation and shutdown rules matter because long-running goroutines can otherwise leak or hang forever.
+- The worker pipeline is the bridge from HTTP plus PostgreSQL into asynchronous job execution.
+
+#### Mental model
+
+- A goroutine is concurrent execution managed by the Go runtime.
+- An unbuffered channel is a direct handoff: send waits for receive.
+- A buffered channel is a bounded queue: send can get ahead until the buffer fills.
+- Channel close means no more values will be sent.
+- `ctx.Done()` is the standard stop signal for goroutines.
+- Every goroutine should have an owner, a communication path, and a termination path.
+
+#### Syntax
+
+```go
+go func() {
+	jobs <- "job-1"
+	close(jobs)
+}()
+
+for job := range jobs {
+	fmt.Println(job)
+}
+```
+
+```go
+select {
+case jobID, ok := <-jobs:
+	if !ok {
+		return
+	}
+case <-ctx.Done():
+	return
+}
+```
+
+#### Idiomatic Go points
+
+- Use channels for explicit communication rather than ad hoc shared state.
+- The sender should usually close the channel.
+- `range ch` is the cleanest way to consume until a channel is closed.
+- Use `select` when a goroutine must react to both work and cancellation.
+- Prefer `context.Context` over a custom shared stop flag.
+
+#### Python comparison
+
+- A goroutine is somewhat like a lightweight thread or task, but Go treats it as a normal building block rather than a heavyweight special case.
+- Channels are more explicit than sharing a queue plus control flags manually.
+- `context.Context` combines cancellation and deadlines in a way that typical Python examples often split across separate tools.
+
+#### Common mistakes
+
+- Starting a goroutine and assuming the caller waits automatically.
+- Sending on a closed channel.
+- Forgetting that unbuffered sends block until a receiver is ready.
+- Letting a goroutine wait forever without a cancellation or close path.
+- Polling storage and claiming work as separate unsafe steps without recognizing duplicate-enqueue risk.
+
+#### Project application
+
+Day 13 added the first in-process worker pipeline in `cmd/goflow/main.go`.
+
+Current behavior:
+
+- `work` opens the PostgreSQL-backed store once.
+- `work` creates a `jobs chan string` carrying job IDs.
+- One worker goroutine receives job IDs and calls `goflow.StartJob(...)`.
+- The poll loop lists jobs, selects only `pending` jobs, and enqueues their IDs.
+- The worker listens to both the jobs channel and `workCtx.Done()`.
+- `signal.NotifyContext(...)` lets the `work` command stop cleanly on interrupt.
+
+Validated behavior on 2026-09-04:
+
+- `go run ./cmd/goflow work` successfully claimed a pending job.
+- `go run ./cmd/goflow list` then showed that job as `running`.
+
+Known limitation of this first increment:
+
+- duplicate enqueue is still possible because polling and claiming are separate steps
+- this is less dangerous with one worker, but it would become a more serious race with multiple workers
+
+#### Production implications
+
+- Clear goroutine ownership is essential before adding a worker pool.
+- Bounded channels create backpressure; unbounded in-memory queues are dangerous.
+- Cancellation must propagate through the same context chain used by database calls.
+- Safe claiming will matter more once multiple workers exist.
+
+#### Interview questions
+
+1. What is the difference between an unbuffered and buffered channel?
+2. Why should the sender usually close the channel?
+3. Why is `ctx.Done()` better than a shared `stop bool`?
+4. Why can polling plus later claiming create duplicate work?
+5. Why is a single-worker pipeline safer than a multi-worker pipeline during the first concurrency increment?
+
+#### References
+
+- Go Concurrency Patterns: Pipelines and cancellation: https://go.dev/blog/pipelines
+- Package context: https://pkg.go.dev/context
+- Effective Go: https://go.dev/doc/effective_go
+
+#### My questions and corrections
+
+- Without coordination, `main` can exit before a goroutine gets CPU time.
+- Removing the receive from an unbuffered channel example does not only lose the value; it causes the sender to block.
+- Receiving from a closed `chan string` returns `"" , false`, not `0, false`.
+- The poller should send job IDs, not full jobs, in the first GoFlow pipeline increment.
+- `work` should own cancellation and pass the same context into polling and claiming.
+
+##### Day 13 completion note
+
+- The `work` command now uses a bounded buffered queue with `jobQueueSize = 8`.
+- This gives a small in-memory backlog before senders block, which makes backpressure visible in real project code.
+- The worker and poll loop both stop from the same owned context, so shutdown is coordinated rather than ad hoc.
+- Day 13 is complete for the single-worker learning milestone, but duplicate enqueue risk remains as an intentional lead-in to later synchronization work.

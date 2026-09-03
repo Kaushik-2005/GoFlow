@@ -7,8 +7,11 @@ import (
 	"goflow/internal/goflow"
 	"net/http"
 	"os"
+	"os/signal"
 	"time"
 )
+
+const jobQueueSize = 8
 
 func requireArg(args []string, index int, message string) (string, bool) {
 	if len(args) <= index {
@@ -20,7 +23,7 @@ func requireArg(args []string, index int, message string) (string, bool) {
 
 func printHelp() {
 	fmt.Println("Usage: goflow <command>")
-	fmt.Println("Commands: list, create, get, process, serve")
+	fmt.Println("Commands: list, create, get, process, serve, work")
 	fmt.Println("Environment: DATABASE_URL must point to PostgreSQL")
 }
 
@@ -191,6 +194,77 @@ func main() {
 		fmt.Println("starting server on :8080")
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Printf("server error: %v\n", err)
+		}
+	case "work":
+		workCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+
+		startupCtx, cancel := context.WithTimeout(workCtx, 5*time.Second)
+		defer cancel()
+
+		store, db, err := openPostgresStore(startupCtx)
+		if err != nil {
+			fmt.Printf("failed to open store: %v\n", err)
+			return
+		}
+		defer db.Close()
+
+		jobs := make(chan string, jobQueueSize)
+		defer close(jobs)
+
+		go func() {
+			for {
+				select {
+				case jobID, ok := <-jobs:
+					if !ok {
+						return
+					}
+
+					err := goflow.StartJob(workCtx, store, jobID)
+					if err != nil {
+						fmt.Printf("failed to start job %s: %v\n", jobID, err)
+						continue
+					}
+					fmt.Printf("processing job: %s\n", jobID)
+				case <-workCtx.Done():
+					fmt.Println("worker stopping")
+					return
+				}
+			}
+		}()
+
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			jobsList, err := store.List(workCtx)
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					fmt.Println("work command stopping")
+					return
+				}
+				fmt.Printf("failed to list jobs: %v\n", err)
+			} else {
+				for _, job := range jobsList {
+					if job.Status != goflow.StatusPending {
+						continue
+					}
+
+					select {
+					case jobs <- job.ID:
+					case <-workCtx.Done():
+						fmt.Println("work command stopping")
+						return
+					}
+				}
+			}
+
+			select {
+			case <-ticker.C:
+			case <-workCtx.Done():
+				fmt.Println("work command stopping")
+				return
+			}
 		}
 	default:
 		fmt.Printf("unknown command: %s\n", command)

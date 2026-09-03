@@ -332,3 +332,61 @@ sequenceDiagram
 - Live PostgreSQL integration was validated on 2026-09-02 with Docker PostgreSQL, `TestPostgresRepositoryIntegration`, and real HTTP requests to `/health/live`, `/v1/jobs`, and `/v1/jobs/{id}`.
 - The test strategy now has four useful levels: service fakes, handler tests with `httptest`, repository tests with `sqlmock`, and a real database integration path.
 - The Week 2 API surface now includes both `status` filtering on `GET /v1/jobs` and deletion through `DELETE /v1/jobs/{id}`.
+
+## Day 13 - Module 3.1: First Worker Pipeline
+
+### Goal
+
+Introduce the first in-process concurrency flow for GoFlow without yet adding a full worker pool or atomic claim logic.
+
+### Design change
+
+- Added a new CLI command: `work`.
+- `work` opens the PostgreSQL-backed store once.
+- `work` creates `jobs chan string` carrying job IDs.
+- One worker goroutine receives IDs and calls `goflow.StartJob(...)`.
+- The poll loop lists pending jobs and enqueues their IDs.
+- The worker now listens to both the jobs channel and `workCtx.Done()`.
+- `signal.NotifyContext(...)` is used so the command can stop on interrupt.
+
+### Diagram
+
+```mermaid
+flowchart TD
+    Work[go run ./cmd/goflow work] --> Poller[poll loop]
+    Poller --> Jobs[jobs chan string]
+    Jobs --> Worker[single worker goroutine]
+    Worker --> Service[StartJob]
+    Service --> Repo[PostgresRepository]
+    Repo --> DB[(PostgreSQL)]
+```
+
+### Flow
+
+```mermaid
+sequenceDiagram
+    participant Work as work command
+    participant Poller as poll loop
+    participant Ch as jobs channel
+    participant Worker as worker goroutine
+    participant DB as PostgreSQL
+
+    Work->>Poller: start loop
+    Poller->>DB: list jobs
+    Poller->>Ch: send pending job ID
+    Worker->>Ch: receive job ID
+    Worker->>DB: StartJob -> Get + Update
+    DB-->>Worker: job claimed as running
+```
+
+### Why this matters
+
+- This is the first real producer/consumer pipeline in GoFlow.
+- The command now demonstrates goroutine ownership, channel handoff, and context-based shutdown in real project code.
+- The design still has duplicate-enqueue risk, which is a useful lead-in to later synchronization and claiming work.
+
+### Day 13 completion update
+
+- The `jobs` channel is now bounded with a small buffer instead of being unbuffered.
+- This makes the queue behavior closer to a real work buffer while still preserving backpressure once the buffer fills.
+- Shutdown now propagates through one owned context to both the poller and the worker.

@@ -2,11 +2,11 @@
 
 ## Current Position
 
-- Current week: Week 2
-- Current module: Day 12 - Week 2 checkpoint
-- Current topic: Week 2 checkpoint and revision
-- Current task: Run the Week 2 checkpoint on 2026-09-02 now that Module 2.5 is complete
-- Next milestone: Start the Week 2 checkpoint before moving into Day 13 - Module 3.1
+- Current week: Week 3
+- Current module: Day 14 - Module 3.2
+- Current topic: Synchronization
+- Current task: Start Module 3.2 with synchronization, race conditions, and shared-state protection after completing Day 13 on 2026-09-04
+- Next milestone: Learn `sync.WaitGroup`, `sync.Mutex`, and when channels are not enough for shared state
 - Active blockers: None for current testing work; live PostgreSQL validation completed on 2026-09-02
 
 ## Roadmap Progress
@@ -24,8 +24,8 @@
 | 9 | Module 2.3 | Project organization and architecture | Completed | Clear layered structure for API and worker code | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/middleware.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `curl http://localhost:8080/health/live`; learner explained why reusable core logic must leave `package main`, why handlers should not import `main`, and why `main` should stay thin | 4 |
 | 10 | Module 2.4 | PostgreSQL and `database/sql` | Completed | PostgreSQL-backed CLI and HTTP runtime with automatic schema setup | `go test -run TestPostgresRepositoryIntegration ./internal/goflow -v`; `curl.exe http://localhost:8080/health/live`; `curl.exe http://localhost:8080/v1/jobs`; `Invoke-RestMethod -Method POST -Uri "http://localhost:8080/v1/jobs" -ContentType "application/json" -Body '{"type":"email"}'`; `curl.exe http://localhost:8080/v1/jobs/job-70f1178cdbe12194`; learner validated live PostgreSQL integration, list, create, and get over HTTP | 4 |
 | 11 | Module 2.5 | Testing fundamentals | Completed | Tested PostgreSQL-backed REST API with create, retrieve, list, filter, delete, validation, consistent errors, and database-failure coverage | `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/main.go`; `gofmt -w ./internal/goflow/service_test.go ./internal/goflow/postgres_repository_test.go ./internal/goflow/postgres_repository_integration_test.go`; `go vet ./...`; `go test ./...`; `go test -cover ./...`; `go test --% -coverprofile=coverage.out ./...`; learner used handwritten fakes, `httptest`, `sqlmock`, `t.Cleanup`, repository integration testing, and added filter/delete API coverage | 4 |
-| 12 | Week 2 checkpoint | Revision and spillover | Not Started | Checkpoint review and catch-up buffer | — | — |
-| 13 | Module 3.1 | Goroutines and channels | Not Started | First concurrent processing pipeline | — | — |
+| 12 | Week 2 checkpoint | Revision and spillover | Completed | Concept review, debugging exercise, and small architecture exercise completed before Week 3 | learner explained handler/service/repository boundaries, context-first APIs, `sql.DB` reuse, unit vs integration tests, interface sizing, middleware debugging, and `POST /v1/jobs/{id}/start` design | 3 |
+| 13 | Module 3.1 | Goroutines and channels | Completed | Single-worker polling pipeline with bounded buffered queue, channel-based job delivery, and context-aware shutdown | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow work`; `go run ./cmd/goflow list`; learner explained goroutines, channel closing, buffered vs unbuffered channels, duplicate enqueue risk, `ctx.Done()`, and why `main` owns worker cancellation while the worker owns claim attempts | 4 |
 | 14 | Module 3.2 | Synchronization | Not Started | Shared-state protection and coordination | — | — |
 | 15 | Module 3.3 | Worker pool | Not Started | Configurable worker pool | — | — |
 | 16 | Module 3.4 | Context and graceful shutdown | Not Started | Controlled shutdown and cancellation flow | — | — |
@@ -149,6 +149,10 @@
 - Decisions made: keep the current file-backed app flow temporarily while introducing the DB repository boundary behind `database/sql`
 - Topics to revisit: mapping unique-constraint errors to `ErrJobAlreadyExists`; switching the app startup path from `LoadStore(...)` to a real database handle
 - Next action: wire a real `*sql.DB` into startup, verify connectivity with `PingContext`, and route operations through the repository
+
+
+
+
 
 
 

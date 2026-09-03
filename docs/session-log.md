@@ -778,3 +778,144 @@
 ### Next session
 
 - Run the Week 2 checkpoint before starting Day 13 - Module 3.1
+
+## 2026-09-03 — Week 2 checkpoint completed
+
+### Topics covered
+
+- Handler vs service vs repository
+- Context-first APIs
+- `sql.DB` reuse
+- Transaction boundaries
+- Middleware execution order
+- Unit vs integration tests
+- Small interfaces
+- Endpoint design through current architecture
+
+### Work completed
+
+- Completed the Week 2 conceptual checkpoint
+- Completed one debugging exercise around misplaced or broken JSON middleware
+- Completed one small design exercise for `POST /v1/jobs/{id}/start`
+- Cleared the gate to begin Day 13 - Module 3.1
+
+### Commands run
+
+- `Get-Content -Path .\Go_Industry_Roadmap_4_Weeks.md | Select-Object -Skip 462 -First 80`
+- `Get-Content -Path .\docs\tracker.md -TotalCount 40`
+- `Get-Content -Path .\docs\learning.md | Select-Object -Skip 1324 -First 170`
+- `Get-Content -Path .\docs\session-log.md -Tail 80`
+- `Get-Content -Path .\cmd\goflow\http.go -TotalCount 220`
+- `Get-Content -Path .\cmd\goflow\main.go -TotalCount 220`
+- `Get-Content -Path .\internal\goflow\service.go -TotalCount 220`
+- `Get-Content -Path .\internal\goflow\postgres_repository.go -TotalCount 260`
+
+### Problems encountered
+
+- Transaction boundaries and middleware order still need reinforcement even though the checkpoint was sufficient to move forward
+
+### What I understood well
+
+- The service layer owns state-transition rules
+- `context.Context` carries cancellation and deadlines through the call chain
+- `sql.DB` should be reused as a pool manager
+- Small interfaces reduce coupling and simplify testing
+
+### What needs revision
+
+- Sharpen transaction-boundary reasoning once concurrency is introduced
+- Sharpen middleware-order reasoning with the real wrapping model
+
+### Next session
+
+- Start Day 13 - Module 3.1 with goroutines, channels, and pipeline basics
+
+## 2026-09-04 — Module 3.1 first worker pipeline
+
+### Topics covered
+
+- Goroutines
+- Unbuffered vs buffered channels
+- Channel close and receive semantics
+- `select` with `ctx.Done()`
+- Goroutine leaks
+- Duplicate enqueue risk in polling systems
+
+### Work completed
+
+- Added the `work` command in `cmd/goflow/main.go`
+- Built the first single-worker polling pipeline
+- Added context-based worker shutdown with `signal.NotifyContext(...)`
+- Validated that a pending job moved to `running`
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/main.go`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow work`
+- `go run ./cmd/goflow list`
+
+### Problems encountered
+
+- The first worker context incorrectly used a 5-second timeout and would have auto-stopped
+- The polling loop initially used `context.Background()` instead of the owned worker context
+- The `os/signal` import initially did not land and caused `undefined: signal`
+
+### What I understood well
+
+- Why unbuffered channels synchronize sender and receiver directly
+- Why the sender should close the channel
+- Why the outer command should own cancellation
+- Why a single-worker pipeline is safer than starting with many workers
+
+### What needs revision
+
+- Buffered channel sizing and backlog trade-offs
+- Atomic claiming to remove duplicate-enqueue risk
+- Clean shutdown of both poller and workers as the pipeline grows
+
+### Next session
+
+- Continue Day 13 with buffered queue design and cancellation-aware polling improvements
+
+## 2026-09-04 — Module 3.1 completed
+
+### Topics covered
+
+- Bounded buffered channels
+- Backpressure
+- Shared cancellation with `context.Context`
+- Clean worker and poller shutdown
+
+### Work completed
+
+- Changed the `work` pipeline from an unbuffered channel to a bounded buffered queue
+- Verified clean shutdown messages from both worker and outer command
+- Completed Day 13 learning and project increment
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/main.go`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow work`
+
+### Problems encountered
+
+- The queue-size constant was briefly referenced before declaration and had to be added explicitly
+
+### What I understood well
+
+- Buffered channels allow limited backlog before blocking
+- Both poller and worker must observe the same cancellation signal
+- One worker reduces the damage from duplicate enqueue compared with a multi-worker setup
+
+### What needs revision
+
+- Atomic claim logic to prevent duplicate enqueue and duplicate processing
+- When to use channels versus mutexes in later synchronization work
+
+### Next session
+
+- Start Day 14 - Module 3.2 with `sync.WaitGroup`, `sync.Mutex`, race conditions, and channels versus mutexes
