@@ -3,10 +3,10 @@
 ## Current Position
 
 - Current week: Week 3
-- Current module: Day 14 - Module 3.2
-- Current topic: Synchronization
-- Current task: Start Module 3.2 with synchronization, race conditions, and shared-state protection after completing Day 13 on 2026-09-04
-- Next milestone: Learn `sync.WaitGroup`, `sync.Mutex`, and when channels are not enough for shared state
+- Current module: Day 15 - Module 3.3
+- Current topic: Worker pool
+- Current task: Start Module 3.3 on 2026-09-04 with a configurable worker pool after completing synchronization basics
+- Next milestone: Expand the single-worker pipeline into multiple workers with explicit coordination
 - Active blockers: None for current testing work; live PostgreSQL validation completed on 2026-09-02
 
 ## Roadmap Progress
@@ -26,7 +26,7 @@
 | 11 | Module 2.5 | Testing fundamentals | Completed | Tested PostgreSQL-backed REST API with create, retrieve, list, filter, delete, validation, consistent errors, and database-failure coverage | `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/main.go`; `gofmt -w ./internal/goflow/service_test.go ./internal/goflow/postgres_repository_test.go ./internal/goflow/postgres_repository_integration_test.go`; `go vet ./...`; `go test ./...`; `go test -cover ./...`; `go test --% -coverprofile=coverage.out ./...`; learner used handwritten fakes, `httptest`, `sqlmock`, `t.Cleanup`, repository integration testing, and added filter/delete API coverage | 4 |
 | 12 | Week 2 checkpoint | Revision and spillover | Completed | Concept review, debugging exercise, and small architecture exercise completed before Week 3 | learner explained handler/service/repository boundaries, context-first APIs, `sql.DB` reuse, unit vs integration tests, interface sizing, middleware debugging, and `POST /v1/jobs/{id}/start` design | 3 |
 | 13 | Module 3.1 | Goroutines and channels | Completed | Single-worker polling pipeline with bounded buffered queue, channel-based job delivery, and context-aware shutdown | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow work`; `go run ./cmd/goflow list`; learner explained goroutines, channel closing, buffered vs unbuffered channels, duplicate enqueue risk, `ctx.Done()`, and why `main` owns worker cancellation while the worker owns claim attempts | 4 |
-| 14 | Module 3.2 | Synchronization | Not Started | Shared-state protection and coordination | — | — |
+| 14 | Module 3.2 | Synchronization | Completed | Mutex-protected in-memory queue bookkeeping plus synchronization theory applied to GoFlow | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; learner explained `sync.WaitGroup`, race conditions, `sync.Mutex`, channels vs mutexes, deadlocks, `defer mu.Unlock()`, race detection, and added mutex-protected `queued` bookkeeping in the `work` command | 4 |
 | 15 | Module 3.3 | Worker pool | Not Started | Configurable worker pool | — | — |
 | 16 | Module 3.4 | Context and graceful shutdown | Not Started | Controlled shutdown and cancellation flow | — | — |
 | 17 | Module 3.5 | Retries and failure handling | Not Started | Retry policy and dead-letter path | — | — |
@@ -149,6 +149,7 @@
 - Decisions made: keep the current file-backed app flow temporarily while introducing the DB repository boundary behind `database/sql`
 - Topics to revisit: mapping unique-constraint errors to `ErrJobAlreadyExists`; switching the app startup path from `LoadStore(...)` to a real database handle
 - Next action: wire a real `*sql.DB` into startup, verify connectivity with `PingContext`, and route operations through the repository
+
 
 
 

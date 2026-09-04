@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 )
 
@@ -209,6 +210,9 @@ func main() {
 		}
 		defer db.Close()
 
+		queued := make(map[string]struct{})
+		var queueMu sync.Mutex
+
 		jobs := make(chan string, jobQueueSize)
 		defer close(jobs)
 
@@ -221,6 +225,9 @@ func main() {
 					}
 
 					err := goflow.StartJob(workCtx, store, jobID)
+					queueMu.Lock()
+					delete(queued, jobID)
+					queueMu.Unlock()
 					if err != nil {
 						fmt.Printf("failed to start job %s: %v\n", jobID, err)
 						continue
@@ -249,6 +256,17 @@ func main() {
 					if job.Status != goflow.StatusPending {
 						continue
 					}
+
+					queueMu.Lock()
+
+					_, alreadyQueued := queued[job.ID]
+					if alreadyQueued {
+						queueMu.Unlock()
+						continue
+					}
+
+					queued[job.ID] = struct{}{}
+					queueMu.Unlock()
 
 					select {
 					case jobs <- job.ID:

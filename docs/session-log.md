@@ -919,3 +919,47 @@
 ### Next session
 
 - Start Day 14 - Module 3.2 with `sync.WaitGroup`, `sync.Mutex`, race conditions, and channels versus mutexes
+
+## 2026-09-04 — Module 3.2 synchronization completed
+
+### Topics covered
+
+- `sync.WaitGroup`
+- Race conditions
+- `sync.Mutex`
+- Channels vs mutexes
+- Deadlocks
+- `defer mu.Unlock()`
+- Race detection
+
+### Work completed
+
+- Completed the Day 14 synchronization theory block
+- Added mutex-protected `queued` bookkeeping to the `work` command
+- Reduced duplicate enqueueing inside the current process
+- Finished Module 3.2 and moved the tracker to Day 15
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/main.go`
+- `go vet ./...`
+- `go test ./...`
+
+### Problems encountered
+
+- None after the mutex-protected queue bookkeeping was wired correctly
+
+### What I understood well
+
+- `WaitGroup` and `Mutex` solve different problems
+- Channels communicate work, mutexes protect shared memory
+- The `queued` map needs a mutex while the `jobs` channel does not
+
+### What needs revision
+
+- Add `go test -race ./...` once the worker pool becomes more substantial
+- Strengthen persistent claim safety beyond local in-memory bookkeeping
+
+### Next session
+
+- Start Day 15 - Module 3.3 with a configurable worker pool

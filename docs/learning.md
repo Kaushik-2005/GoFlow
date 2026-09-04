@@ -1619,3 +1619,117 @@ Known limitation of this first increment:
 - This gives a small in-memory backlog before senders block, which makes backpressure visible in real project code.
 - The worker and poll loop both stop from the same owned context, so shutdown is coordinated rather than ad hoc.
 - Day 13 is complete for the single-worker learning milestone, but duplicate enqueue risk remains as an intentional lead-in to later synchronization work.
+
+### Day 14: Module 3.2 - Synchronization
+
+#### Concept
+
+This module adds the next layer after basic goroutines and channels: synchronization. Goroutines can communicate through channels, but shared mutable memory still needs explicit protection. GoFlow now has its first real example of that distinction through the in-memory `queued` bookkeeping used by the poller and worker.
+
+#### Why it matters
+
+- Concurrency is not only about starting goroutines; it is also about coordinating shared state safely.
+- `sync.WaitGroup` solves waiting for completion.
+- `sync.Mutex` solves exclusive access to shared mutable memory.
+- Race conditions and deadlocks are common correctness failures in concurrent code.
+- GoFlow now has a concrete example where channels are not enough on their own.
+
+#### Mental model
+
+- `WaitGroup` answers: "are all goroutines finished yet?"
+- `Mutex` answers: "can only one goroutine touch this state right now?"
+- A race occurs when concurrent access touches the same memory and at least one access is a write without synchronization.
+- A deadlock occurs when goroutines are stuck waiting and no one can make progress.
+- Channels coordinate communication; mutexes protect shared memory.
+
+#### Syntax
+
+```go
+var wg sync.WaitGroup
+wg.Add(2)
+go func() {
+	defer wg.Done()
+}()
+wg.Wait()
+```
+
+```go
+var mu sync.Mutex
+mu.Lock()
+defer mu.Unlock()
+count++
+```
+
+```go
+go test -race ./...
+```
+
+#### Idiomatic Go points
+
+- Use `defer mu.Unlock()` when the critical section is simple and you want to protect early returns.
+- Keep the locked section as small as possible.
+- Do not use `WaitGroup` as if it were a lock.
+- Do not add mutexes around channels for ordinary send/receive operations.
+- Use a mutex only around the separate shared state that channels do not protect.
+
+#### Python comparison
+
+- `WaitGroup` is similar in purpose to waiting for a group of threads or tasks to finish.
+- `Mutex` is like a lock around shared memory, but Go makes the concurrency ownership model more central to ordinary design.
+- The race detector is built into the normal Go toolchain rather than being a separate pattern you must invent yourself.
+
+#### Common mistakes
+
+- Thinking `WaitGroup` prevents races.
+- Forgetting `Unlock()` and causing blocked goroutines.
+- Assuming channels automatically make every related data structure safe.
+- Reading and writing the same Go map from multiple goroutines without synchronization.
+- Treating “it usually worked once” as proof that concurrent code is safe.
+
+#### Project application
+
+Day 14 applied synchronization to the `work` command in `cmd/goflow/main.go`.
+
+What changed:
+
+- Added `queued := make(map[string]struct{})` as in-memory bookkeeping for job IDs already queued.
+- Added `var queueMu sync.Mutex` to protect that shared map.
+- The poller now locks, checks whether a job ID is already queued, and only enqueues it if absent.
+- The worker removes the job ID from `queued` after `StartJob(...)` finishes.
+
+Why this matters:
+
+- the `jobs` channel is already safe for concurrent send/receive
+- the `queued` map is separate shared mutable memory
+- therefore the map needs a mutex while the channel does not
+
+This reduces duplicate enqueueing within the current process, although it does not replace the need for stronger persistent claim logic later.
+
+#### Production implications
+
+- Shared in-memory bookkeeping becomes risky quickly once multiple workers exist.
+- Maps need explicit protection under concurrent read/write access.
+- Smaller critical sections reduce contention and deadlock risk.
+- `go test -race ./...` should become part of normal concurrency validation as the worker system grows.
+
+#### Interview questions
+
+1. What problem does `sync.WaitGroup` solve, and what problem does it not solve?
+2. Why is `count++` unsafe across goroutines without synchronization?
+3. When would you use a channel versus a mutex?
+4. Why can forgetting `Unlock()` lead to deadlock?
+5. Why does a shared map need a mutex even when the program already uses channels elsewhere?
+
+#### References
+
+- Package sync: https://pkg.go.dev/sync
+- Data Race Detector: https://go.dev/doc/articles/race_detector
+- Effective Go: https://go.dev/doc/effective_go
+
+#### My questions and corrections
+
+- `WaitGroup` is for completion coordination, not race prevention.
+- `Mutex` protects shared memory; it is not needed around ordinary channel send/receive.
+- `queued[jobID]` is local process bookkeeping that means "already queued, skip it for now."
+- The worker should remove a job ID from `queued` after the claim attempt finishes, whether it succeeded or failed.
+- The `queued` map reduces duplicate enqueueing in one process, but it does not solve cross-process or persistent claim safety.

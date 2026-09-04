@@ -390,3 +390,33 @@ sequenceDiagram
 - The `jobs` channel is now bounded with a small buffer instead of being unbuffered.
 - This makes the queue behavior closer to a real work buffer while still preserving backpressure once the buffer fills.
 - Shutdown now propagates through one owned context to both the poller and the worker.
+
+## Day 14 - Module 3.2: Shared Bookkeeping Synchronization
+
+### Goal
+
+Protect the first shared in-memory bookkeeping used by the worker pipeline as GoFlow moves from basic concurrency into coordinated concurrency.
+
+### Design change
+
+- Added a mutex-protected `queued` set local to the `work` command.
+- The poller records a job ID in the set before enqueueing it.
+- The worker removes the job ID after the claim attempt finishes.
+- The channel remains the communication path; the mutex protects only the separate shared map.
+
+### Diagram
+
+```mermaid
+flowchart TD
+    Poller[poll loop] --> QueueSet[queued set + mutex]
+    Poller --> Jobs[jobs channel]
+    Jobs --> Worker[worker goroutine]
+    Worker --> QueueSet
+    Worker --> Service[StartJob]
+```
+
+### Why this matters
+
+- This is the first explicit shared-memory synchronization step in GoFlow.
+- It demonstrates the boundary between channel-based communication and mutex-protected bookkeeping.
+- It reduces duplicate enqueueing within the current process and prepares the design for a later worker pool.
