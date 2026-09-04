@@ -420,3 +420,37 @@ flowchart TD
 - This is the first explicit shared-memory synchronization step in GoFlow.
 - It demonstrates the boundary between channel-based communication and mutex-protected bookkeeping.
 - It reduces duplicate enqueueing within the current process and prepares the design for a later worker pool.
+
+## Day 15 - Module 3.3: Worker Pool Expansion
+
+### Goal
+
+Expand the single-worker pipeline into a small bounded worker pool while keeping ownership, queue behavior, and shutdown coordination explicit.
+
+### Design change
+
+- Added `workerCount = 3`.
+- Replaced one worker goroutine with a loop that starts three workers.
+- Added `sync.WaitGroup` so the `work` command waits for all workers to stop.
+- Added worker IDs to processing, failure, and shutdown logs.
+- Kept the same shared `jobs` channel and mutex-protected `queued` set.
+
+### Diagram
+
+```mermaid
+flowchart TD
+    Poller[poll loop] --> Jobs[jobs channel]
+    Jobs --> W1[worker 1]
+    Jobs --> W2[worker 2]
+    Jobs --> W3[worker 3]
+    W1 --> Service[StartJob]
+    W2 --> Service
+    W3 --> Service
+    Service --> Repo[PostgresRepository]
+```
+
+### Why this matters
+
+- GoFlow now has bounded concurrent consumers instead of a single worker.
+- The shared queue plus fixed worker count demonstrates the standard worker-pool pattern.
+- Coordinated shutdown with `WaitGroup` becomes visible and necessary once the pool has several workers.

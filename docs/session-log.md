@@ -963,3 +963,49 @@
 ### Next session
 
 - Start Day 15 - Module 3.3 with a configurable worker pool
+
+## 2026-09-04 — Module 3.3 worker pool completed
+
+### Topics covered
+
+- Worker pool pattern
+- Shared queue with multiple workers
+- Fixed pool sizing
+- `sync.WaitGroup` for worker shutdown
+- Worker identity in concurrent logs
+
+### Work completed
+
+- Expanded the `work` command from one worker to three workers
+- Added `WaitGroup`-based shutdown coordination
+- Verified that different workers processed different jobs
+- Finished Module 3.3 and moved the tracker to Day 16
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/main.go`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow create email`
+- `go run ./cmd/goflow create email`
+- `go run ./cmd/goflow create email`
+- `go run ./cmd/goflow work`
+
+### Problems encountered
+
+- The first worker-pool shutdown path returned before waiting for workers and had to be tightened with explicit `wg.Wait()`
+
+### What I understood well
+
+- One shared channel distributes jobs across workers
+- `WaitGroup` is the right tool for waiting for all workers to exit
+- Worker IDs are necessary to understand concurrent processing and shutdown logs
+
+### What needs revision
+
+- Persistent atomic claim logic beyond local in-memory duplicate suppression
+- Race-focused validation once the concurrency surface grows further
+
+### Next session
+
+- Start Day 16 - Module 3.4 with context propagation and graceful shutdown

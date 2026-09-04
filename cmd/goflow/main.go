@@ -13,6 +13,7 @@ import (
 )
 
 const jobQueueSize = 8
+const workerCount = 3
 
 func requireArg(args []string, index int, message string) (string, bool) {
 	if len(args) <= index {
@@ -216,29 +217,41 @@ func main() {
 		jobs := make(chan string, jobQueueSize)
 		defer close(jobs)
 
-		go func() {
-			for {
-				select {
-				case jobID, ok := <-jobs:
-					if !ok {
+		var wg sync.WaitGroup
+
+		for workerID := 1; workerID <= workerCount; workerID++ {
+			wg.Add(1)
+
+			go func(id int) {
+				defer wg.Done()
+
+				for {
+					select {
+					case jobID, ok := <-jobs:
+						if !ok {
+							return
+						}
+
+						err := goflow.StartJob(workCtx, store, jobID)
+
+						queueMu.Lock()
+						delete(queued, jobID)
+						queueMu.Unlock()
+
+						if err != nil {
+							fmt.Printf("worker %d failed to start job %s: %v\n", id, jobID, err)
+							continue
+						}
+
+						fmt.Printf("worker %d processing job: %s\n", id, jobID)
+
+					case <-workCtx.Done():
+						fmt.Printf("worker %d stopping\n", id)
 						return
 					}
-
-					err := goflow.StartJob(workCtx, store, jobID)
-					queueMu.Lock()
-					delete(queued, jobID)
-					queueMu.Unlock()
-					if err != nil {
-						fmt.Printf("failed to start job %s: %v\n", jobID, err)
-						continue
-					}
-					fmt.Printf("processing job: %s\n", jobID)
-				case <-workCtx.Done():
-					fmt.Println("worker stopping")
-					return
 				}
-			}
-		}()
+			}(workerID)
+		}
 
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()

@@ -1733,3 +1733,121 @@ This reduces duplicate enqueueing within the current process, although it does n
 - `queued[jobID]` is local process bookkeeping that means "already queued, skip it for now."
 - The worker should remove a job ID from `queued` after the claim attempt finishes, whether it succeeded or failed.
 - The `queued` map reduces duplicate enqueueing in one process, but it does not solve cross-process or persistent claim safety.
+
+### Day 15: Module 3.3 - Worker Pool
+
+#### Concept
+
+A worker pool is a fixed set of worker goroutines that all consume work from the same channel. Instead of spawning one unbounded goroutine per job, GoFlow now starts a small number of workers that compete for job IDs from the shared `jobs` queue.
+
+#### Why it matters
+
+- It bounds concurrency to a known level.
+- It makes throughput more predictable.
+- It avoids unbounded goroutine creation.
+- It is the normal next step after proving a single-worker pipeline.
+- It prepares GoFlow for more realistic background processing.
+
+#### Mental model
+
+- One poller produces candidate job IDs.
+- Many workers consume from the same queue.
+- Each sent job ID is received by one available worker.
+- `sync.WaitGroup` lets the owner wait for all workers to exit.
+- Worker IDs make concurrent behavior observable in logs.
+
+#### Syntax
+
+```go
+var wg sync.WaitGroup
+
+for i := 0; i < workerCount; i++ {
+	workerID := i + 1
+	wg.Add(1)
+
+	go func(workerID int) {
+		defer wg.Done()
+		for jobID := range jobs {
+			fmt.Printf("worker %d got %s\n", workerID, jobID)
+		}
+	}(workerID)
+}
+```
+
+#### Idiomatic Go points
+
+- Use a small fixed pool first before introducing dynamic sizing.
+- Pass `workerID` into the goroutine instead of capturing the loop variable implicitly.
+- Keep one shared queue and multiple consumers.
+- Use `WaitGroup` to coordinate worker exit when the owner shuts down.
+- Let logs expose worker identity so concurrent behavior is debuggable.
+
+#### Python comparison
+
+- This is like a bounded worker-thread pool or task worker group, but built directly with goroutines and channels.
+- The important Go-native idea is that the pool is explicit: one queue, many consumers, bounded concurrency.
+
+#### Common mistakes
+
+- Assuming each worker receives every job.
+- Forgetting to wait for all workers on shutdown.
+- Capturing the loop variable incorrectly when starting goroutines.
+- Treating log order as deterministic in concurrent shutdown.
+- Scaling worker count before the claim logic is safe.
+
+#### Project application
+
+Day 15 changed the `work` command in `cmd/goflow/main.go` from one worker to a pool of three workers.
+
+What changed:
+
+- Added `const workerCount = 3`.
+- Replaced the single worker goroutine with a loop that starts three workers.
+- Added `var wg sync.WaitGroup` to wait for worker shutdown.
+- Added worker IDs to success, failure, and shutdown log messages.
+- Made the `work` command explicitly wait for workers before returning on shutdown.
+
+Runtime validation on 2026-09-04:
+
+- Three pending jobs were created.
+- Running `go run ./cmd/goflow work` produced:
+  - `worker 1 processing job: job-3211c03ff8544e51`
+  - `worker 3 processing job: job-d8300d15e248acfd`
+  - `worker 2 processing job: job-add7c96c00099b31`
+- Shutdown logs showed each worker stopping plus the outer `work command stopping` message.
+
+What this proves:
+
+- multiple workers can share one channel safely
+- each job goes to one worker, not all workers
+- distribution depends on which worker is ready first
+- shutdown remains coordinated even with several worker goroutines
+
+#### Production implications
+
+- A worker pool is safer than unbounded goroutine creation, but only if job claiming is also safe.
+- Pool size should stay small and explicit until performance or workload characteristics justify tuning.
+- Concurrent log output is naturally unordered, so logs should identify workers clearly.
+- `WaitGroup` becomes more important as the number of worker goroutines grows.
+
+#### Interview questions
+
+1. What is a worker pool and why is it useful?
+2. Why does one job go to one worker on a shared channel?
+3. Why is a small fixed worker count a good first step?
+4. Why does a worker pool benefit from `sync.WaitGroup`?
+5. Why is shutdown log order not deterministic in concurrent code?
+
+#### References
+
+- Package sync: https://pkg.go.dev/sync
+- Go Concurrency Patterns: https://go.dev/blog/pipelines
+- Effective Go: https://go.dev/doc/effective_go
+
+#### My questions and corrections
+
+- A worker pool is bounded concurrency over a shared queue, not broadcast processing.
+- The jobs channel already distributes work; each receive removes one job ID from the channel.
+- `WaitGroup` matters more once several workers must all exit cleanly before the owner returns.
+- Worker IDs in logs make concurrent behavior understandable.
+- Local `queued` bookkeeping still does not replace stronger persistent claim safety.
