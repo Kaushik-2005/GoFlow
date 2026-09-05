@@ -1009,3 +1009,53 @@
 ### Next session
 
 - Start Day 16 - Module 3.4 with context propagation and graceful shutdown
+
+## 2026-09-04 — Module 3.4 context and graceful shutdown completed
+
+### Topics covered
+
+- `context.Background`, `context.WithTimeout`, and cancellation trees
+- `ctx.Done()` versus `ctx.Err()`
+- OS signal handling with `signal.NotifyContext(...)`
+- HTTP server graceful shutdown
+- Worker and poller shutdown ownership
+- Nondeterministic goroutine log ordering
+
+### Work completed
+
+- Added signal-driven shutdown to the `serve` command
+- Ran `ListenAndServe()` in a goroutine so the main goroutine can wait for Ctrl+C
+- Added a fresh 5-second shutdown context for `server.Shutdown(...)`
+- Tightened `work` lifecycle ownership so the poller closes the jobs channel and waits for workers
+- Verified the worker command stops cleanly and that shutdown log order is not deterministic
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/main.go`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow serve`
+- `go run ./cmd/goflow work`
+
+### Problems encountered
+
+- `go test ./...` failed while Docker PostgreSQL was stopped, then passed after Docker was started again
+- `go test -race ./...` could not complete because the local Windows Go/cgo toolchain failed before tests ran
+- Shutdown logs from different goroutines appeared in different orders, which is expected concurrent behavior
+
+### What I understood well
+
+- Startup timeout contexts should not control long-running worker lifetimes
+- Parent context cancellation propagates to child contexts
+- `ListenAndServe()` blocks, so graceful shutdown needs it in a goroutine
+- HTTP shutdown needs a fresh timeout context because the signal context is already cancelled
+- Concurrent shutdown log order is not a correctness guarantee
+
+### What needs revision
+
+- Retry/failure handling and idempotent processing semantics start next
+- Race-focused validation still needs a working local race-detector toolchain
+
+### Next session
+
+- Start Day 17 - Module 3.5 with transient versus permanent failures, exponential backoff, jitter, retry caps, and dead-letter handling

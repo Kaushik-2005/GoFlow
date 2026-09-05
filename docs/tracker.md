@@ -3,10 +3,10 @@
 ## Current Position
 
 - Current week: Week 3
-- Current module: Day 16 - Module 3.4
-- Current topic: Context and graceful shutdown
-- Current task: Start Module 3.4 on 2026-09-04 with context propagation and graceful shutdown after completing the worker pool
-- Next milestone: Add cleaner shutdown and cancellation flow across the worker pipeline
+- Current module: Day 17 - Module 3.5
+- Current topic: Retries and failure handling
+- Current task: Start Module 3.5 with retry policy, transient/permanent failures, and dead-letter handling
+- Next milestone: Add retry policy and failure handling to the worker pipeline
 - Active blockers: None for current testing work; live PostgreSQL validation completed on 2026-09-02
 
 ## Roadmap Progress
@@ -28,7 +28,7 @@
 | 13 | Module 3.1 | Goroutines and channels | Completed | Single-worker polling pipeline with bounded buffered queue, channel-based job delivery, and context-aware shutdown | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow work`; `go run ./cmd/goflow list`; learner explained goroutines, channel closing, buffered vs unbuffered channels, duplicate enqueue risk, `ctx.Done()`, and why `main` owns worker cancellation while the worker owns claim attempts | 4 |
 | 14 | Module 3.2 | Synchronization | Completed | Mutex-protected in-memory queue bookkeeping plus synchronization theory applied to GoFlow | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; learner explained `sync.WaitGroup`, race conditions, `sync.Mutex`, channels vs mutexes, deadlocks, `defer mu.Unlock()`, race detection, and added mutex-protected `queued` bookkeeping in the `work` command | 4 |
 | 15 | Module 3.3 | Worker pool | Completed | Three-worker pool with shared queue, worker IDs, and coordinated shutdown | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow work`; runtime showed `worker 1`, `worker 2`, and `worker 3` each processing different jobs and stopping cleanly on shutdown | 4 |
-| 16 | Module 3.4 | Context and graceful shutdown | Not Started | Controlled shutdown and cancellation flow | — | — |
+| 16 | Module 3.4 | Context and graceful shutdown | Completed | Controlled shutdown and cancellation flow for HTTP server and worker pool | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `go run ./cmd/goflow work`; learner explained context ownership, cancellation trees, `ctx.Done()` vs `ctx.Err()`, why `ListenAndServe()` runs in a goroutine, why shutdown uses a fresh timeout context, and why goroutine shutdown log order is not deterministic | 4 |
 | 17 | Module 3.5 | Retries and failure handling | Not Started | Retry policy and dead-letter path | — | — |
 | 18 | Module 3.6 | Concurrency testing | Not Started | Race-tested worker behavior | — | — |
 | 19 | Module 4.1 | Structured logging | Not Started | Structured logs in API and worker paths | — | — |
@@ -149,6 +149,7 @@
 - Decisions made: keep the current file-backed app flow temporarily while introducing the DB repository boundary behind `database/sql`
 - Topics to revisit: mapping unique-constraint errors to `ErrJobAlreadyExists`; switching the app startup path from `LoadStore(...)` to a real database handle
 - Next action: wire a real `*sql.DB` into startup, verify connectivity with `PingContext`, and route operations through the repository
+
 
 
 

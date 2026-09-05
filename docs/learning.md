@@ -1851,3 +1851,125 @@ What this proves:
 - `WaitGroup` matters more once several workers must all exit cleanly before the owner returns.
 - Worker IDs in logs make concurrent behavior understandable.
 - Local `queued` bookkeeping still does not replace stronger persistent claim safety.
+
+### Day 16: Module 3.4 - Context, Cancellation, and Graceful Shutdown
+
+#### Concept
+
+This module tightened GoFlow's lifecycle management. The app now uses context cancellation and OS signals so both the HTTP server and worker command can stop deliberately instead of exiting abruptly.
+
+#### Why it matters
+
+- Long-running services need a predictable shutdown path.
+- HTTP servers should stop accepting new requests while giving active requests time to finish.
+- Workers and pollers must have a shared cancellation signal so goroutines do not leak.
+- Database calls should receive contexts so startup, requests, and worker operations can be cancelled.
+
+#### Mental model
+
+- `context.Background()` is the root context for top-level application work.
+- `signal.NotifyContext(...)` creates a command-owned context that cancels on Ctrl+C.
+- `context.WithTimeout(...)` creates a child context with a deadline.
+- Cancelling a parent context cancels child contexts.
+- `ctx.Done()` is the channel that signals cancellation.
+- `ctx.Err()` explains why the context stopped.
+- `server.Shutdown(ctx)` performs graceful HTTP shutdown within the given deadline.
+
+#### Syntax
+
+```go
+serverCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+defer stop()
+
+startupCtx, cancel := context.WithTimeout(serverCtx, 5*time.Second)
+store, db, err := openPostgresStore(startupCtx)
+cancel()
+```
+
+```go
+go func() {
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		fmt.Printf("server error: %v\n", err)
+	}
+}()
+
+<-serverCtx.Done()
+
+shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer shutdownCancel()
+
+if err := server.Shutdown(shutdownCtx); err != nil {
+	fmt.Printf("server shutdown error: %v\n", err)
+}
+```
+
+#### Idiomatic Go points
+
+- Pass `context.Context` as the first argument when a function does cancellable work.
+- Use a short startup context for database startup checks, not for the whole worker lifetime.
+- Do not store context inside domain structs.
+- Let the owner of goroutines own their cancellation signal.
+- Use a fresh timeout context for graceful HTTP shutdown because the signal context is already cancelled.
+- Treat concurrent log ordering as nondeterministic.
+
+#### Python comparison
+
+Python services often combine signal handlers, async cancellation, and framework lifecycle hooks. Go usually makes the lifecycle explicit: create a root context, derive child contexts, pass them into blocking operations, then wait for goroutines with synchronization tools like `WaitGroup`.
+
+#### Common mistakes
+
+- Reusing a 5-second startup context for the worker loop and accidentally stopping workers after startup.
+- Calling `ListenAndServe()` directly and blocking the main goroutine from observing Ctrl+C.
+- Using the already-cancelled signal context as the shutdown deadline context.
+- Expecting worker shutdown logs to appear in a fixed order.
+- Cancelling workers without waiting for them to exit.
+
+#### Project application
+
+Day 16 updated `cmd/goflow/main.go` so both long-running commands have explicit lifecycle control.
+
+HTTP server behavior:
+
+- `serve` creates a signal-owned server context.
+- database startup uses a short child timeout context.
+- `ListenAndServe()` runs in a goroutine so the main goroutine can wait for Ctrl+C.
+- shutdown uses a fresh 5-second timeout context.
+- `http.ErrServerClosed` is treated as the normal result of graceful shutdown.
+
+Worker behavior:
+
+- `work` creates a signal-owned worker context.
+- database startup uses a short child timeout context.
+- poller and workers share the same long-running worker context.
+- `stopWorkers()` closes the jobs channel and waits for every worker through `WaitGroup`.
+- worker shutdown log order is intentionally not guaranteed because goroutines react independently.
+
+#### Production implications
+
+- Graceful shutdown protects in-flight requests and jobs from abrupt process exit.
+- Bounded shutdown deadlines prevent the process from hanging forever.
+- Context propagation makes database work participate in request and command lifecycles.
+- Log order is not a correctness guarantee in concurrent systems; lifecycle ownership and waiting are the guarantees.
+
+#### Interview questions
+
+1. Why should `ListenAndServe()` run in a goroutine when implementing graceful shutdown?
+2. Why should `server.Shutdown(...)` use a fresh timeout context?
+3. What is the difference between `ctx.Done()` and `ctx.Err()`?
+4. Why should the owner of goroutines also own cancellation?
+5. Why is worker shutdown log order nondeterministic?
+
+#### References
+
+- Go Concurrency Patterns: Context: https://go.dev/blog/context
+- Package context: https://pkg.go.dev/context
+- Package net/http Server.Shutdown: https://pkg.go.dev/net/http#Server.Shutdown
+- Package os/signal: https://pkg.go.dev/os/signal
+
+#### My questions and corrections
+
+- `startupCtx` is correct for `openPostgresStore(...)`, but it would be wrong for the worker loop because it would stop after 5 seconds.
+- A child context is cancelled when its parent is cancelled.
+- `server.Shutdown(...)` stops accepting new requests and waits for active HTTP requests, but it does not automatically stop unrelated workers or pollers.
+- The `work` command owns the worker lifecycle, so it creates the cancellation context and waits for workers.
+- `worker N stopping` and `work command stopping` can appear in different orders because goroutines schedule independently.

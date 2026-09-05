@@ -454,3 +454,56 @@ flowchart TD
 - GoFlow now has bounded concurrent consumers instead of a single worker.
 - The shared queue plus fixed worker count demonstrates the standard worker-pool pattern.
 - Coordinated shutdown with `WaitGroup` becomes visible and necessary once the pool has several workers.
+
+## Day 16 - Module 3.4: Context and Graceful Shutdown
+
+### Goal
+
+Give GoFlow's long-running `serve` and `work` commands explicit cancellation ownership and graceful shutdown behavior.
+
+### Design change
+
+- `serve` now owns a signal context for server lifetime.
+- database startup uses a short child timeout context.
+- `ListenAndServe()` runs in a goroutine so the main goroutine can wait for Ctrl+C.
+- `server.Shutdown(...)` uses a fresh 5-second timeout context.
+- `work` now treats the poller as the owner of the jobs channel and worker shutdown sequence.
+- worker shutdown uses `close(jobs)` plus `WaitGroup` coordination.
+
+### HTTP shutdown flow
+
+```mermaid
+flowchart TD
+    Start[go run ./cmd/goflow serve] --> SignalCtx[signal.NotifyContext]
+    SignalCtx --> StartupCtx[5s startup context]
+    StartupCtx --> DB[open PostgreSQL store]
+    DB --> Server[http.Server]
+    Server --> Listen[ListenAndServe goroutine]
+    SignalCtx --> Interrupt[Ctrl+C cancels serverCtx]
+    Interrupt --> ShutdownCtx[fresh 5s shutdown context]
+    ShutdownCtx --> Shutdown[server.Shutdown]
+    Shutdown --> Stop[server stopped]
+```
+
+### Worker shutdown flow
+
+```mermaid
+flowchart TD
+    Work[go run ./cmd/goflow work] --> WorkCtx[signal.NotifyContext]
+    WorkCtx --> Poller[poll pending jobs]
+    Poller --> Queue[jobs channel]
+    Queue --> Workers[worker pool]
+    WorkCtx --> Interrupt[Ctrl+C cancels workCtx]
+    Interrupt --> StopPoller[poller stops]
+    StopPoller --> CloseQueue[close jobs channel]
+    CloseQueue --> WorkerExit[workers exit]
+    WorkerExit --> Wait[WaitGroup waits]
+    Wait --> Done[work command exits]
+```
+
+### Why this matters
+
+- The application now has explicit owners for cancellation and cleanup.
+- The HTTP path can stop without abruptly killing active requests.
+- The worker path can stop polling, signal workers, wait for them, and then release resources.
+- Concurrent log output is intentionally unordered, so correctness is based on shutdown coordination rather than printed order.

@@ -163,14 +163,18 @@ func main() {
 
 		fmt.Printf("processing job: %s\n", jobID)
 	case "serve":
-		startupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		serverCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
 
+		startupCtx, cancel := context.WithTimeout(serverCtx, 5*time.Second)
 		store, db, err := openPostgresStore(startupCtx)
+		cancel()
+
 		if err != nil {
 			fmt.Printf("failed to open store: %v\n", err)
 			return
 		}
+
 		defer db.Close()
 
 		api := newAPIHandler(store)
@@ -184,7 +188,7 @@ func main() {
 			mux,
 			requestIDMiddleware,
 			recoveryMiddleware,
-			requestBodyLimitMiddleware(1<<20),
+			requestBodyLimitMiddleware(1<<20), // 1 MB limit
 			requireJSONMiddleware,
 		)
 
@@ -193,10 +197,32 @@ func main() {
 			Handler: handler,
 		}
 
-		fmt.Println("starting server on :8080")
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			fmt.Printf("server error: %v\n", err)
+		go func() {
+			fmt.Println("starting server on :8080")
+
+			if err := server.ListenAndServe(); err != nil &&
+				!errors.Is(err, http.ErrServerClosed) {
+				fmt.Printf("server error: %v\n", err)
+			}
+		}()
+
+		<-serverCtx.Done()
+
+		fmt.Println("server shutting down")
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(
+			context.Background(),
+			5*time.Second,
+		)
+		defer shutdownCancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			fmt.Printf("server shutdown error: %v\n", err)
+			return
 		}
+
+		fmt.Println("server stopped")
+
 	case "work":
 		workCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
@@ -215,7 +241,6 @@ func main() {
 		var queueMu sync.Mutex
 
 		jobs := make(chan string, jobQueueSize)
-		defer close(jobs)
 
 		var wg sync.WaitGroup
 
@@ -253,6 +278,11 @@ func main() {
 			}(workerID)
 		}
 
+		stopWorkers := func() {
+			close(jobs)
+			wg.Wait()
+		}
+
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 
@@ -261,6 +291,7 @@ func main() {
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					fmt.Println("work command stopping")
+					stopWorkers()
 					return
 				}
 				fmt.Printf("failed to list jobs: %v\n", err)
@@ -285,6 +316,7 @@ func main() {
 					case jobs <- job.ID:
 					case <-workCtx.Done():
 						fmt.Println("work command stopping")
+						stopWorkers()
 						return
 					}
 				}
@@ -294,6 +326,7 @@ func main() {
 			case <-ticker.C:
 			case <-workCtx.Done():
 				fmt.Println("work command stopping")
+				stopWorkers()
 				return
 			}
 		}
