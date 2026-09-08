@@ -7,6 +7,7 @@ import (
 	"goflow/internal/goflow"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type errorResponse struct {
@@ -205,6 +206,7 @@ func (h *apiHandler) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		Status:      goflow.StatusPending,
 		Attempts:    0,
 		MaxAttempts: 3,
+		AvailableAt: time.Now(),
 	}
 
 	if err := h.store.Create(r.Context(), job); err != nil {

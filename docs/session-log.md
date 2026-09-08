@@ -1059,3 +1059,59 @@
 ### Next session
 
 - Start Day 17 - Module 3.5 with transient versus permanent failures, exponential backoff, jitter, retry caps, and dead-letter handling
+
+## 2026-09-08 — Module 3.5 retries and failure handling completed
+
+### Topics covered
+
+- Transient versus permanent failures
+- Retry budgets and max attempts
+- Exponential backoff
+- Dead-letter state
+- `available_at` retry scheduling
+- `last_error` failure recording
+- At-least-once execution and idempotency
+
+### Work completed
+
+- Added retry metadata to the `Job` model
+- Updated PostgreSQL repository SQL, scanning, tests, and migration compatibility
+- Added `ListReadyJobs(ctx)` for SQL-side ready-job filtering
+- Added `CompleteJob(...)` and `FailJob(...)` service transitions
+- Added `JobExecutionError` for temporary/permanent classification
+- Added a simulated worker executor and wired the worker to complete, retry, or dead-letter jobs
+- Updated creation paths so new jobs are immediately available
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/worker.go ./cmd/goflow/worker_test.go`
+- `gofmt -w ./internal/goflow/service.go ./internal/goflow/service_test.go ./internal/goflow/postgres_repository.go ./internal/goflow/postgres_repository_test.go`
+- `go vet ./...`
+- `go test ./...`
+- `go test -run TestPostgresRepositoryIntegration ./internal/goflow -v`
+- `go test -race ./...`
+
+### Problems encountered
+
+- Existing database tables needed `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` because `CREATE TABLE IF NOT EXISTS` does not add new columns.
+- The migration briefly had duplicate `created_at` and was corrected.
+- `go test -race ./...` is still blocked by the local Windows `cgo.exe` failure before tests run.
+- CLI and HTTP create paths initially missed `AvailableAt`, which was corrected.
+
+### What I understood well
+
+- Temporary failures should retry until attempts are exhausted
+- Permanent failures should move to `dead_letter` immediately after recording the failed attempt
+- `available_at` is persistent scheduling and avoids tying up workers
+- `last_error` helps debugging and operations
+- Idempotency is required because external effects may happen before completion is recorded
+
+### What needs revision
+
+- Add jitter to retry delay instead of deterministic backoff only
+- Strengthen exact attempt-count semantics during the next review
+- Resolve local race-detector tooling before Module 3.6 can be fully validated
+
+### Next session
+
+- Start Day 18 - Module 3.6 with race detector behavior, deterministic worker tests, and goroutine leak risk

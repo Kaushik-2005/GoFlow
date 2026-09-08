@@ -89,6 +89,7 @@ func main() {
 			Status:      goflow.StatusPending,
 			Attempts:    0,
 			MaxAttempts: 3,
+			AvailableAt: time.Now(),
 		}
 
 		if err := store.Create(ctx, job); err != nil {
@@ -268,7 +269,35 @@ func main() {
 							continue
 						}
 
+						job, err := store.Get(workCtx, jobID)
+						if err != nil {
+							fmt.Printf("worker %d failed to load job %s: %v\n", id, jobID, err)
+							continue
+						}
+
 						fmt.Printf("worker %d processing job: %s\n", id, jobID)
+
+						if err := executeJob(workCtx, job); err != nil {
+							if errors.Is(err, context.Canceled) {
+								fmt.Printf("worker %d stopping\n", id)
+								return
+							}
+
+							if failErr := goflow.FailJob(workCtx, store, jobID, err, time.Now()); failErr != nil {
+								fmt.Printf("worker %d failed to record job failure %s: %v\n", id, jobID, failErr)
+								continue
+							}
+
+							fmt.Printf("worker %d failed job: %s: %v\n", id, jobID, err)
+							continue
+						}
+
+						if err := goflow.CompleteJob(workCtx, store, jobID); err != nil {
+							fmt.Printf("worker %d failed to complete job %s: %v\n", id, jobID, err)
+							continue
+						}
+
+						fmt.Printf("worker %d completed job: %s\n", id, jobID)
 
 					case <-workCtx.Done():
 						fmt.Printf("worker %d stopping\n", id)
@@ -287,7 +316,7 @@ func main() {
 		defer ticker.Stop()
 
 		for {
-			jobsList, err := store.List(workCtx)
+			jobsList, err := store.ListReadyJobs(workCtx)
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					fmt.Println("work command stopping")
@@ -297,9 +326,6 @@ func main() {
 				fmt.Printf("failed to list jobs: %v\n", err)
 			} else {
 				for _, job := range jobsList {
-					if job.Status != goflow.StatusPending {
-						continue
-					}
 
 					queueMu.Lock()
 

@@ -6,10 +6,13 @@ import (
 	"errors"
 	"regexp"
 	"testing"
+	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/lib/pq"
 )
+
+var testAvailableAt = time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)
 
 func newMockRepository(t *testing.T) (*PostgresRepository, sqlmock.Sqlmock) {
 	t.Helper()
@@ -41,13 +44,13 @@ func TestPostgresRepositoryCreate(t *testing.T) {
 	}{
 		{
 			name: "success",
-			job:  Job{ID: "job-1", Type: "email", Payload: []byte("payload"), Status: StatusPending, Attempts: 0, MaxAttempts: 3},
+			job:  Job{ID: "job-1", Type: "email", Payload: []byte("payload"), Status: StatusPending, Attempts: 0, MaxAttempts: 3, AvailableAt: testAvailableAt},
 			setupMock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectExec(regexp.QuoteMeta(`
-		INSERT INTO jobs (id, job_type, payload, status, attempts, max_attempts)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO jobs (id, job_type, payload, status, attempts, max_attempts, available_at, last_error)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`)).
-					WithArgs("job-1", "email", []byte("payload"), StatusPending, 0, 3).
+					WithArgs("job-1", "email", []byte("payload"), StatusPending, 0, 3, testAvailableAt, "").
 					WillReturnResult(sqlmock.NewResult(1, 1))
 			},
 			checkErr: func(t *testing.T, err error) {
@@ -59,13 +62,13 @@ func TestPostgresRepositoryCreate(t *testing.T) {
 		},
 		{
 			name: "duplicate key maps to ErrJobAlreadyExists",
-			job:  Job{ID: "job-1", Type: "email", Status: StatusPending, Attempts: 0, MaxAttempts: 3},
+			job:  Job{ID: "job-1", Type: "email", Status: StatusPending, Attempts: 0, MaxAttempts: 3, AvailableAt: testAvailableAt},
 			setupMock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectExec(regexp.QuoteMeta(`
-		INSERT INTO jobs (id, job_type, payload, status, attempts, max_attempts)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO jobs (id, job_type, payload, status, attempts, max_attempts, available_at, last_error)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`)).
-					WithArgs("job-1", "email", []byte(nil), StatusPending, 0, 3).
+					WithArgs("job-1", "email", []byte(nil), StatusPending, 0, 3, testAvailableAt, "").
 					WillReturnError(&pq.Error{Code: "23505"})
 			},
 			checkErr: func(t *testing.T, err error) {
@@ -98,10 +101,10 @@ func TestPostgresRepositoryGet(t *testing.T) {
 			name: "success",
 			id:   "job-1",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				rows := sqlmock.NewRows([]string{"id", "job_type", "payload", "status", "attempts", "max_attempts"}).
-					AddRow("job-1", "email", []byte("payload"), "pending", 0, 3)
+				rows := sqlmock.NewRows([]string{"id", "job_type", "payload", "status", "attempts", "max_attempts", "available_at", "last_error"}).
+					AddRow("job-1", "email", []byte("payload"), "pending", 0, 3, testAvailableAt, "")
 				mock.ExpectQuery(regexp.QuoteMeta(`
-		SELECT id, job_type, payload, status, attempts, max_attempts
+		SELECT id, job_type, payload, status, attempts, max_attempts, available_at, last_error
 		FROM jobs
 		WHERE id = $1
 	`)).WithArgs("job-1").WillReturnRows(rows)
@@ -121,7 +124,7 @@ func TestPostgresRepositoryGet(t *testing.T) {
 			id:   "job-404",
 			setupMock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(regexp.QuoteMeta(`
-		SELECT id, job_type, payload, status, attempts, max_attempts
+		SELECT id, job_type, payload, status, attempts, max_attempts, available_at, last_error
 		FROM jobs
 		WHERE id = $1
 	`)).WithArgs("job-404").WillReturnError(sql.ErrNoRows)
@@ -154,11 +157,11 @@ func TestPostgresRepositoryList(t *testing.T) {
 		{
 			name: "success",
 			setupMock: func(mock sqlmock.Sqlmock) {
-				rows := sqlmock.NewRows([]string{"id", "job_type", "payload", "status", "attempts", "max_attempts"}).
-					AddRow("job-1", "email", []byte("payload-1"), "pending", 0, 3).
-					AddRow("job-2", "report", []byte("payload-2"), "running", 1, 3)
+				rows := sqlmock.NewRows([]string{"id", "job_type", "payload", "status", "attempts", "max_attempts", "available_at", "last_error"}).
+					AddRow("job-1", "email", []byte("payload-1"), "pending", 0, 3, testAvailableAt, "").
+					AddRow("job-2", "report", []byte("payload-2"), "running", 1, 3, testAvailableAt, "")
 				mock.ExpectQuery(regexp.QuoteMeta(`
-		SELECT id, job_type, payload, status, attempts, max_attempts
+		SELECT id, job_type, payload, status, attempts, max_attempts, available_at, last_error
 		FROM jobs
 		ORDER BY created_at ASC, id ASC
 	`)).WillReturnRows(rows)
@@ -180,7 +183,7 @@ func TestPostgresRepositoryList(t *testing.T) {
 			name: "query failure",
 			setupMock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(regexp.QuoteMeta(`
-		SELECT id, job_type, payload, status, attempts, max_attempts
+		SELECT id, job_type, payload, status, attempts, max_attempts, available_at, last_error
 		FROM jobs
 		ORDER BY created_at ASC, id ASC
 	`)).WillReturnError(sql.ErrConnDone)
@@ -213,13 +216,13 @@ func TestPostgresRepositoryUpdate(t *testing.T) {
 	}{
 		{
 			name: "success",
-			job:  Job{ID: "job-1", Type: "email", Status: StatusRunning, Attempts: 1, MaxAttempts: 3},
+			job:  Job{ID: "job-1", Type: "email", Status: StatusRunning, Attempts: 1, MaxAttempts: 3, AvailableAt: testAvailableAt},
 			setupMock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectExec(regexp.QuoteMeta(`
 		UPDATE jobs
-		SET job_type = $2, payload = $3, status = $4, attempts = $5, max_attempts = $6, updated_at = NOW()
+		SET job_type = $2, payload = $3, status = $4, attempts = $5, max_attempts = $6, available_at = $7, last_error = $8, updated_at = NOW()
 		WHERE id = $1
-	`)).WithArgs("job-1", "email", []byte(nil), StatusRunning, 1, 3).WillReturnResult(sqlmock.NewResult(0, 1))
+	`)).WithArgs("job-1", "email", []byte(nil), StatusRunning, 1, 3, testAvailableAt, "").WillReturnResult(sqlmock.NewResult(0, 1))
 			},
 			checkErr: func(t *testing.T, err error) {
 				t.Helper()
@@ -230,13 +233,13 @@ func TestPostgresRepositoryUpdate(t *testing.T) {
 		},
 		{
 			name: "not found",
-			job:  Job{ID: "job-404", Type: "email", Status: StatusPending, Attempts: 0, MaxAttempts: 3},
+			job:  Job{ID: "job-404", Type: "email", Status: StatusPending, Attempts: 0, MaxAttempts: 3, AvailableAt: testAvailableAt},
 			setupMock: func(mock sqlmock.Sqlmock) {
 				mock.ExpectExec(regexp.QuoteMeta(`
 		UPDATE jobs
-		SET job_type = $2, payload = $3, status = $4, attempts = $5, max_attempts = $6, updated_at = NOW()
+		SET job_type = $2, payload = $3, status = $4, attempts = $5, max_attempts = $6, available_at = $7, last_error = $8, updated_at = NOW()
 		WHERE id = $1
-	`)).WithArgs("job-404", "email", []byte(nil), StatusPending, 0, 3).WillReturnResult(sqlmock.NewResult(0, 0))
+	`)).WithArgs("job-404", "email", []byte(nil), StatusPending, 0, 3, testAvailableAt, "").WillReturnResult(sqlmock.NewResult(0, 0))
 			},
 			checkErr: func(t *testing.T, err error) {
 				t.Helper()

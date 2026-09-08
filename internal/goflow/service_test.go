@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 type fakeJobStore struct {
@@ -148,5 +149,133 @@ func TestStartJobUpdateFailure(t *testing.T) {
 
 	if !store.updateHit {
 		t.Fatal("expected store.Update() to be called")
+	}
+}
+
+func TestCompleteJobSuccess(t *testing.T) {
+	store := &fakeJobStore{
+		jobs: make(map[string]Job),
+		job: Job{
+			ID:        "job-1",
+			Status:    StatusRunning,
+			LastError: "previous error",
+		},
+	}
+
+	err := CompleteJob(context.Background(), store, "job-1")
+	if err != nil {
+		t.Fatalf("CompleteJob() returned error: %v", err)
+	}
+
+	if !store.updateHit {
+		t.Fatal("expected store.Update() to be called")
+	}
+	if store.updated.Status != StatusCompleted {
+		t.Fatalf("expected status %q, got %q", StatusCompleted, store.updated.Status)
+	}
+	if store.updated.LastError != "" {
+		t.Fatalf("expected last error to be cleared, got %q", store.updated.LastError)
+	}
+}
+
+func TestCompleteJobInvalidStatus(t *testing.T) {
+	store := &fakeJobStore{
+		jobs: make(map[string]Job),
+		job: Job{
+			ID:     "job-1",
+			Status: StatusPending,
+		},
+	}
+
+	err := CompleteJob(context.Background(), store, "job-1")
+	if err == nil {
+		t.Fatal("expected CompleteJob() to return an error")
+	}
+	if store.updateHit {
+		t.Fatal("expected store.Update() not to be called")
+	}
+}
+
+func TestFailJobTemporaryFailureWithRetriesLeft(t *testing.T) {
+	now := time.Date(2026, 9, 7, 11, 0, 0, 0, time.UTC)
+	store := &fakeJobStore{
+		jobs: make(map[string]Job),
+		job: Job{
+			ID:          "job-1",
+			Status:      StatusRunning,
+			Attempts:    1,
+			MaxAttempts: 3,
+		},
+	}
+
+	err := FailJob(context.Background(), store, "job-1", JobExecutionError{Temporary: true, Message: "smtp unavailable"}, now)
+	if err != nil {
+		t.Fatalf("FailJob() returned error: %v", err)
+	}
+
+	if store.updated.Status != StatusPending {
+		t.Fatalf("expected status %q, got %q", StatusPending, store.updated.Status)
+	}
+	if store.updated.Attempts != 2 {
+		t.Fatalf("expected attempts 2, got %d", store.updated.Attempts)
+	}
+	if store.updated.LastError != "smtp unavailable" {
+		t.Fatalf("expected last error to be recorded, got %q", store.updated.LastError)
+	}
+	if !store.updated.AvailableAt.Equal(now.Add(4 * time.Second)) {
+		t.Fatalf("expected available_at to use retry delay, got %v", store.updated.AvailableAt)
+	}
+}
+
+func TestFailJobTemporaryFailureMaxAttemptsReached(t *testing.T) {
+	now := time.Date(2026, 9, 7, 11, 0, 0, 0, time.UTC)
+	store := &fakeJobStore{
+		jobs: make(map[string]Job),
+		job: Job{
+			ID:          "job-1",
+			Status:      StatusRunning,
+			Attempts:    2,
+			MaxAttempts: 3,
+		},
+	}
+
+	err := FailJob(context.Background(), store, "job-1", JobExecutionError{Temporary: true, Message: "smtp unavailable"}, now)
+	if err != nil {
+		t.Fatalf("FailJob() returned error: %v", err)
+	}
+
+	if store.updated.Status != StatusDeadLetter {
+		t.Fatalf("expected status %q, got %q", StatusDeadLetter, store.updated.Status)
+	}
+	if store.updated.Attempts != 3 {
+		t.Fatalf("expected attempts 3, got %d", store.updated.Attempts)
+	}
+}
+
+func TestFailJobPermanentFailure(t *testing.T) {
+	now := time.Date(2026, 9, 7, 11, 0, 0, 0, time.UTC)
+	store := &fakeJobStore{
+		jobs: make(map[string]Job),
+		job: Job{
+			ID:          "job-1",
+			Status:      StatusRunning,
+			Attempts:    0,
+			MaxAttempts: 3,
+		},
+	}
+
+	err := FailJob(context.Background(), store, "job-1", JobExecutionError{Temporary: false, Message: "invalid payload"}, now)
+	if err != nil {
+		t.Fatalf("FailJob() returned error: %v", err)
+	}
+
+	if store.updated.Status != StatusDeadLetter {
+		t.Fatalf("expected status %q, got %q", StatusDeadLetter, store.updated.Status)
+	}
+	if store.updated.Attempts != 1 {
+		t.Fatalf("expected attempts 1, got %d", store.updated.Attempts)
+	}
+	if store.updated.LastError != "invalid payload" {
+		t.Fatalf("expected last error to be recorded, got %q", store.updated.LastError)
 	}
 }

@@ -507,3 +507,63 @@ flowchart TD
 - The HTTP path can stop without abruptly killing active requests.
 - The worker path can stop polling, signal workers, wait for them, and then release resources.
 - Concurrent log output is intentionally unordered, so correctness is based on shutdown coordination rather than printed order.
+
+## Day 17 - Module 3.5: Retries and Failure Handling
+
+### Goal
+
+Add a real worker failure state machine so GoFlow can complete successful jobs, retry temporary failures, and preserve exhausted or permanent failures as dead-letter jobs.
+
+### Design change
+
+- Added `available_at` as persistent retry scheduling metadata.
+- Added `last_error` as operational failure evidence.
+- Added `completed` and `dead_letter` terminal states.
+- Added `ListReadyJobs(ctx)` so the database selects only pending jobs whose retry delay has elapsed.
+- Kept retry decisions in the service layer through `CompleteJob(...)` and `FailJob(...)`.
+- Added a small simulated executor in the command layer so worker orchestration can exercise success, temporary failure, and permanent failure paths.
+
+### Retry state flow
+
+```mermaid
+flowchart TD
+    Pending[pending and available_at <= now] --> Running[running]
+    Running --> Success{execution result}
+    Success -->|success| Completed[completed]
+    Success -->|temporary failure and attempts remain| Retry[attempts incremented, last_error set, available_at moved forward]
+    Retry --> Pending
+    Success -->|temporary failure and attempts exhausted| Dead[dead_letter]
+    Success -->|permanent failure| Dead
+```
+
+### Worker flow
+
+```mermaid
+sequenceDiagram
+    participant Poller as Poller
+    participant Repo as PostgresRepository
+    participant Worker as Worker
+    participant Service as Service
+    participant Exec as executeJob
+
+    Poller->>Repo: ListReadyJobs(ctx)
+    Repo-->>Poller: ready pending jobs
+    Poller->>Worker: send job ID on channel
+    Worker->>Service: StartJob(ctx, id)
+    Worker->>Repo: Get(ctx, id)
+    Worker->>Exec: executeJob(ctx, job)
+    alt success
+        Worker->>Service: CompleteJob(ctx, id)
+    else temporary failure
+        Worker->>Service: FailJob(ctx, id, temporary error, now)
+    else permanent failure
+        Worker->>Service: FailJob(ctx, id, permanent error, now)
+    end
+```
+
+### Why this matters
+
+- Retry state now survives process restarts because it is stored in PostgreSQL.
+- Workers are not blocked sleeping for future retries.
+- Dead-letter jobs remain queryable for diagnosis.
+- Service-layer transition functions prevent worker code from spreading business rules across the command layer.

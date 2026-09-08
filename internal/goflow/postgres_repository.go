@@ -21,8 +21,8 @@ func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 
 func (r *PostgresRepository) Create(ctx context.Context, job Job) error {
 	const query = `
-		INSERT INTO jobs (id, job_type, payload, status, attempts, max_attempts)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO jobs (id, job_type, payload, status, attempts, max_attempts, available_at, last_error)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`
 
 	_, err := r.db.ExecContext(ctx, query,
@@ -32,6 +32,8 @@ func (r *PostgresRepository) Create(ctx context.Context, job Job) error {
 		job.Status,
 		job.Attempts,
 		job.MaxAttempts,
+		job.AvailableAt,
+		job.LastError,
 	)
 	if err != nil {
 		var pqErr *pq.Error
@@ -47,7 +49,7 @@ func (r *PostgresRepository) Create(ctx context.Context, job Job) error {
 
 func (r *PostgresRepository) Get(ctx context.Context, id string) (Job, error) {
 	const query = `
-		SELECT id, job_type, payload, status, attempts, max_attempts
+		SELECT id, job_type, payload, status, attempts, max_attempts, available_at, last_error
 		FROM jobs
 		WHERE id = $1
 	`
@@ -66,7 +68,7 @@ func (r *PostgresRepository) Get(ctx context.Context, id string) (Job, error) {
 
 func (r *PostgresRepository) List(ctx context.Context) ([]Job, error) {
 	const query = `
-		SELECT id, job_type, payload, status, attempts, max_attempts
+		SELECT id, job_type, payload, status, attempts, max_attempts, available_at, last_error
 		FROM jobs
 		ORDER BY created_at ASC, id ASC
 	`
@@ -94,10 +96,42 @@ func (r *PostgresRepository) List(ctx context.Context) ([]Job, error) {
 	return jobs, nil
 }
 
+func (r *PostgresRepository) ListReadyJobs(ctx context.Context) ([]Job, error) {
+	const query = `
+		SELECT id, job_type, payload, status, attempts, max_attempts, available_at, last_error
+		FROM jobs
+		WHERE status = $1
+		AND available_at <= NOW()
+		ORDER BY available_at ASC, id ASC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, StatusPending)
+	if err != nil {
+		return nil, fmt.Errorf("list ready jobs: %w", err)
+	}
+	defer rows.Close()
+
+	jobs := make([]Job, 0)
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return nil, fmt.Errorf("list ready jobs: %w", err)
+		}
+
+		jobs = append(jobs, job)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list ready jobs: %w", err)
+	}
+
+	return jobs, nil
+}
+
 func (r *PostgresRepository) Update(ctx context.Context, job Job) error {
 	const query = `
 		UPDATE jobs
-		SET job_type = $2, payload = $3, status = $4, attempts = $5, max_attempts = $6, updated_at = NOW()
+		SET job_type = $2, payload = $3, status = $4, attempts = $5, max_attempts = $6, available_at = $7, last_error = $8, updated_at = NOW()
 		WHERE id = $1
 	`
 
@@ -108,6 +142,8 @@ func (r *PostgresRepository) Update(ctx context.Context, job Job) error {
 		job.Status,
 		job.Attempts,
 		job.MaxAttempts,
+		job.AvailableAt,
+		job.LastError,
 	)
 	if err != nil {
 		return fmt.Errorf("update job %q: %w", job.ID, err)
@@ -161,6 +197,8 @@ func scanJob(s scanner) (Job, error) {
 		&status,
 		&job.Attempts,
 		&job.MaxAttempts,
+		&job.AvailableAt,
+		&job.LastError,
 	)
 	if err != nil {
 		return Job{}, err

@@ -3,10 +3,10 @@
 ## Current Position
 
 - Current week: Week 3
-- Current module: Day 17 - Module 3.5
-- Current topic: Retries and failure handling
-- Current task: Start Module 3.5 with retry policy, transient/permanent failures, and dead-letter handling
-- Next milestone: Add retry policy and failure handling to the worker pipeline
+- Current module: Day 18 - Module 3.6
+- Current topic: Concurrency testing
+- Current task: Start Module 3.6 with race detector, deterministic concurrent tests, and worker behavior validation
+- Next milestone: Add race-focused worker tests and improve deterministic concurrency validation
 - Active blockers: None for current testing work; live PostgreSQL validation completed on 2026-09-02
 
 ## Roadmap Progress
@@ -29,7 +29,7 @@
 | 14 | Module 3.2 | Synchronization | Completed | Mutex-protected in-memory queue bookkeeping plus synchronization theory applied to GoFlow | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; learner explained `sync.WaitGroup`, race conditions, `sync.Mutex`, channels vs mutexes, deadlocks, `defer mu.Unlock()`, race detection, and added mutex-protected `queued` bookkeeping in the `work` command | 4 |
 | 15 | Module 3.3 | Worker pool | Completed | Three-worker pool with shared queue, worker IDs, and coordinated shutdown | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow work`; runtime showed `worker 1`, `worker 2`, and `worker 3` each processing different jobs and stopping cleanly on shutdown | 4 |
 | 16 | Module 3.4 | Context and graceful shutdown | Completed | Controlled shutdown and cancellation flow for HTTP server and worker pool | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `go run ./cmd/goflow work`; learner explained context ownership, cancellation trees, `ctx.Done()` vs `ctx.Err()`, why `ListenAndServe()` runs in a goroutine, why shutdown uses a fresh timeout context, and why goroutine shutdown log order is not deterministic | 4 |
-| 17 | Module 3.5 | Retries and failure handling | Not Started | Retry policy and dead-letter path | — | — |
+| 17 | Module 3.5 | Retries and failure handling | Completed | Retry policy, `available_at` scheduling, retryable/permanent failure classification, and dead-letter status | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/worker.go ./cmd/goflow/worker_test.go`; `gofmt -w ./internal/goflow/service.go ./internal/goflow/service_test.go ./internal/goflow/postgres_repository.go ./internal/goflow/postgres_repository_test.go`; `go vet ./...`; `go test ./...`; `go test -run TestPostgresRepositoryIntegration ./internal/goflow -v`; `go test -race ./...` attempted but blocked by local Windows `cgo.exe`; learner explained transient vs permanent failures, retry budget exhaustion, dead-letter purpose, idempotency, `last_error`, and `available_at` scheduling | 4 |
 | 18 | Module 3.6 | Concurrency testing | Not Started | Race-tested worker behavior | — | — |
 | 19 | Module 4.1 | Structured logging | Not Started | Structured logs in API and worker paths | — | — |
 | 20 | Module 4.2 | Observability | Not Started | Metrics and health signals | — | — |
@@ -149,6 +149,8 @@
 - Decisions made: keep the current file-backed app flow temporarily while introducing the DB repository boundary behind `database/sql`
 - Topics to revisit: mapping unique-constraint errors to `ErrJobAlreadyExists`; switching the app startup path from `LoadStore(...)` to a real database handle
 - Next action: wire a real `*sql.DB` into startup, verify connectivity with `PingContext`, and route operations through the repository
+
+
 
 
 

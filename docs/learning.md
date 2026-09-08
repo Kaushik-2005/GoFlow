@@ -1973,3 +1973,121 @@ Worker behavior:
 - `server.Shutdown(...)` stops accepting new requests and waits for active HTTP requests, but it does not automatically stop unrelated workers or pollers.
 - The `work` command owns the worker lifecycle, so it creates the cancellation context and waits for workers.
 - `worker N stopping` and `work command stopping` can appear in different orders because goroutines schedule independently.
+
+### Day 17: Module 3.5 - Retries and Failure Handling
+
+#### Concept
+
+This module turns GoFlow workers from simple claimers into processors that can complete jobs, retry temporary failures, and dead-letter jobs that should no longer run automatically.
+
+#### Why it matters
+
+- Real background jobs fail because dependencies, networks, payloads, and external APIs fail.
+- Temporary failures should not immediately discard work.
+- Permanent failures should not waste retry capacity.
+- Retry delays prevent hammering an already unhealthy dependency.
+- Dead-letter jobs preserve failure evidence for inspection instead of disappearing.
+
+#### Mental model
+
+- Transient failure means retry may help.
+- Permanent failure means retry will not help.
+- `attempts` means how many failed execution attempts have happened.
+- `max_attempts` is the retry budget cap.
+- `available_at` is the persistent retry schedule.
+- `last_error` records the most recent failure reason.
+- `dead_letter` means GoFlow has stopped automatic retries.
+
+#### Syntax
+
+```go
+type JobExecutionError struct {
+	Temporary bool
+	Message   string
+}
+
+func (e JobExecutionError) Error() string {
+	return e.Message
+}
+```
+
+```go
+if isTemporary && job.Attempts < job.MaxAttempts {
+	job.Status = StatusPending
+	job.AvailableAt = now.Add(retryDelay(job.Attempts))
+} else {
+	job.Status = StatusDeadLetter
+}
+```
+
+```go
+func retryDelay(attempt int) time.Duration {
+	return baseRetryDelay * time.Duration(1<<attempt)
+}
+```
+
+#### Idiomatic Go points
+
+- Keep business transitions in `internal/goflow/service.go`, not inside `main.go` worker plumbing.
+- Use a typed error when callers need structured behavior such as temporary versus permanent.
+- Use `errors.As(...)` to inspect that structured error without matching strings.
+- Store retry schedule in the database rather than sleeping inside a worker.
+- Query only ready jobs with SQL instead of loading every job and filtering in Go.
+
+#### Python comparison
+
+Python job systems often hide retries behind framework decorators or queue configuration. In GoFlow, the state machine is explicit: workers call service functions, service functions update job status and retry metadata, and the repository persists those changes.
+
+#### Common mistakes
+
+- Treating dead-letter as a waiting room for temporary failures.
+- Counting only retries instead of all failed execution attempts.
+- Sleeping inside a worker until retry time instead of using `available_at`.
+- Retrying permanent failures.
+- Checking error message strings instead of using a typed error or sentinel error.
+- Assuming at-least-once processing means exactly-once external effects.
+
+#### Project application
+
+Day 17 added retry and failure handling to GoFlow:
+
+- Added `StatusCompleted` and `StatusDeadLetter` states.
+- Added `AvailableAt` and `LastError` to `Job`.
+- Updated PostgreSQL create/select/update/scan logic for retry metadata.
+- Added compatibility migration statements for existing local tables.
+- Added `ListReadyJobs(ctx)` with SQL filtering: `status = pending` and `available_at <= NOW()`.
+- Added service transitions: `CompleteJob(...)` and `FailJob(...)`.
+- Added `JobExecutionError` to classify temporary versus permanent failures.
+- Added `executeJob(...)` as a simple simulated executor for `email`, `report`, `temporary-fail`, and `permanent-fail` jobs.
+- Updated the worker to complete successful jobs and record failed jobs through the service layer.
+
+#### Production implications
+
+- GoFlow now models at-least-once execution more realistically.
+- Idempotency is necessary because a worker can perform an external action and crash before recording completion.
+- `available_at` makes retries persistent and inspectable.
+- Dead-letter state keeps failed jobs visible for manual inspection or later retry tooling.
+- The current retry delay is deterministic exponential backoff; random jitter is still a planned improvement.
+
+#### Interview questions
+
+1. What is the difference between a transient and permanent failure?
+2. Why should dead-letter jobs not be retried automatically?
+3. Why is `available_at` better than sleeping inside a worker?
+4. Why is idempotency necessary in an at-least-once worker system?
+5. Why should retry transition logic live in the service layer?
+
+#### References
+
+- Go errors package: https://pkg.go.dev/errors
+- Package time: https://pkg.go.dev/time
+- Go Concurrency Patterns: Pipelines and cancellation: https://go.dev/blog/pipelines
+- Go Concurrency Patterns: Context: https://go.dev/blog/context
+
+#### My questions and corrections
+
+- SMTP temporarily unavailable is a transient failure, so it should retry until the retry budget is exhausted.
+- Dead-letter means GoFlow has given up automatic retries; it is not where temporary failures wait.
+- A permanent failure still increments `attempts` because the worker did attempt execution.
+- `last_error` explains why the latest execution failed.
+- `available_at` keeps retry timing in persistent state and frees workers to process other jobs.

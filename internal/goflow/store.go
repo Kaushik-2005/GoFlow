@@ -1,6 +1,9 @@
 package goflow
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 var ErrJobNotFound = errors.New("job not found")
 var ErrJobAlreadyExists = errors.New("job already exists")
@@ -8,10 +11,10 @@ var ErrJobAlreadyExists = errors.New("job already exists")
 type JobStatus string
 
 const (
-	StatusPending   JobStatus = "pending"
-	StatusRunning   JobStatus = "running"
-	StatusCompleted JobStatus = "completed"
-	StatusFailed    JobStatus = "failed"
+	StatusPending    JobStatus = "pending"
+	StatusRunning    JobStatus = "running"
+	StatusCompleted  JobStatus = "completed"
+	StatusDeadLetter JobStatus = "dead_letter"
 )
 
 type Job struct {
@@ -21,6 +24,8 @@ type Job struct {
 	Status      JobStatus `json:"status"`
 	Attempts    int       `json:"attempts"`
 	MaxAttempts int       `json:"max_attempts"`
+	AvailableAt time.Time `json:"available_at"`
+	LastError   string    `json:"last_error,omitempty"`
 }
 
 type Store struct {
