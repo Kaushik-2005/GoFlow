@@ -1162,3 +1162,97 @@
 ### Next session
 
 - Complete the Week 3 checkpoint before starting Day 19 - Module 4.1 structured logging.
+
+## 2026-09-09 - Week 3 checkpoint completed
+
+### Topics covered
+
+- Concurrency versus parallelism
+- Channel ownership and closure
+- Backpressure
+- Channel versus mutex trade-offs
+- Data races versus logical races
+- At-least-once processing and idempotency
+- Race-detector limits
+
+### Work completed
+
+- Completed five-plus conceptual checkpoint questions
+- Completed a debugging exercise involving an unbuffered-channel deadlock
+- Designed a deterministic two-worker processing test with exact-once assertions
+- Started Day 19 - Module 4.1 structured logging
+
+### Commands run
+
+- None; checkpoint was conceptual and design-focused
+
+### Problems encountered
+
+- None
+
+### What I understood well
+
+- The sender should usually close the channel
+- Race-free code can still have logical concurrency bugs
+- Idempotency is still required even with a `running` claim state
+- Backpressure comes from bounded queues blocking producers
+
+### What needs revision
+
+- Structured logging starts next, especially where to log errors and how to avoid duplicated logs
+
+### Next session
+
+- Continue Day 19 - Module 4.1 with `log/slog`, levels, JSON/text handlers, correlation IDs, and logging boundaries.
+
+## 2026-09-10 - Module 4.1 structured logging completed
+
+### Topics covered
+
+- Structured key-value logging
+- `log/slog`
+- JSON versus text handlers
+- Log levels
+- Request and job correlation IDs
+- Context-aware logging
+- Avoiding secrets and payload leakage
+- Logging errors once at the boundary
+
+### Work completed
+
+- Added JSON `slog` logs to the worker path
+- Added HTTP request completion logging middleware
+- Added status capture with a response-writer wrapper
+- Added successful job-created logs in the HTTP handler boundary
+- Runtime-validated worker logs, request logs, and job creation logs
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/middleware.go ./cmd/goflow/http.go`
+- `go vet ./...`
+- `go test ./...`
+- `go run ./cmd/goflow work`
+- `go run ./cmd/goflow serve`
+- `curl.exe -i http://localhost:8080/health/live`
+- `Invoke-RestMethod -Method POST -Uri "http://localhost:8080/v1/jobs" -ContentType "application/json" -Body '{"type":"email"}'`
+
+### Problems encountered
+
+- One automated edit initially placed `job created` logging in the wrong handler; it was corrected before validation.
+- Race testing in the agent execution environment hit a Windows ThreadSanitizer allocation error, while the user's terminal had already validated the race detector after fixing UCRT64 GCC.
+
+### What I understood well
+
+- Structured fields make logs searchable and filterable.
+- Service code should usually return errors rather than log them.
+- HTTP handlers and worker command code are better logging boundaries.
+- Payloads and secrets should not be logged by default.
+
+### What needs revision
+
+- Continue distinguishing logs from metrics in Module 4.2.
+- Later make logger format/level configurable.
+
+### Next session
+
+- Start Day 20 - Module 4.2 observability with metrics and health signals.

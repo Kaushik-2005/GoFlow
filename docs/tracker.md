@@ -2,11 +2,11 @@
 
 ## Current Position
 
-- Current week: Week 3
-- Current module: Day 18 - Module 3.6
-- Current topic: Concurrency testing
-- Current task: Prepare Week 3 checkpoint review before starting Week 4
-- Next milestone: Complete Week 3 checkpoint, then start Day 19 - Module 4.1 structured logging
+- Current week: Week 4
+- Current module: Day 19 - Module 4.1
+- Current topic: Structured logging
+- Current task: Start Day 20 - Module 4.2 observability
+- Next milestone: Add metrics and health signals
 - Active blockers: None for current testing work; live PostgreSQL validation completed on 2026-09-02
 
 ## Roadmap Progress
@@ -31,7 +31,8 @@
 | 16 | Module 3.4 | Context and graceful shutdown | Completed | Controlled shutdown and cancellation flow for HTTP server and worker pool | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `go run ./cmd/goflow work`; learner explained context ownership, cancellation trees, `ctx.Done()` vs `ctx.Err()`, why `ListenAndServe()` runs in a goroutine, why shutdown uses a fresh timeout context, and why goroutine shutdown log order is not deterministic | 4 |
 | 17 | Module 3.5 | Retries and failure handling | Completed | Retry policy, `available_at` scheduling, retryable/permanent failure classification, and dead-letter status | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/worker.go ./cmd/goflow/worker_test.go`; `gofmt -w ./internal/goflow/service.go ./internal/goflow/service_test.go ./internal/goflow/postgres_repository.go ./internal/goflow/postgres_repository_test.go`; `go vet ./...`; `go test ./...`; `go test -run TestPostgresRepositoryIntegration ./internal/goflow -v`; `go test -race ./...` attempted but blocked by local Windows `cgo.exe`; learner explained transient vs permanent failures, retry budget exhaustion, dead-letter purpose, idempotency, `last_error`, and `available_at` scheduling | 4 |
 | 18 | Module 3.6 | Concurrency testing | Completed | Race-tested worker behavior with deterministic worker transition tests | `gofmt -w ./cmd/goflow/worker.go ./cmd/goflow/main.go ./cmd/goflow/worker_test.go`; `go test -run TestProcessQueuedJob ./cmd/goflow -v`; `go vet ./...`; `go test ./...`; `go test -race ./...`; learner explained data races versus logical races and why deterministic worker tests avoid timing dependence | 4 |
-| 19 | Module 4.1 | Structured logging | Not Started | Structured logs in API and worker paths | — | — |
+| Week 3 checkpoint | Checkpoint | Concurrency and worker review | Completed | Concept questions, debugging exercise, and worker-pool test design completed | learner explained concurrency vs parallelism, channel ownership, backpressure, channel vs mutex, data vs logical races, idempotency, and race-detector limits; learner debugged an unbuffered-channel deadlock and designed a two-worker exact-once processing test | 4 |
+| 19 | Module 4.1 | Structured logging | Completed | JSON structured logs in worker and HTTP API boundaries | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/middleware.go ./cmd/goflow/http.go`; `go vet ./...`; `go test ./...`; runtime validated worker JSON logs, HTTP request logs with matching `request_id`, and `job created` logs with `job_id` and `job_type`; learner explained log levels, text vs JSON handlers, correlation IDs, avoiding payload/secrets, and logging errors once at the boundary | 4 |
 | 20 | Module 4.2 | Observability | Not Started | Metrics and health signals | — | — |
 | 21 | Module 4.3 | Profiling and performance | Not Started | Measured performance baseline | — | — |
 | 22 | Module 4.4 | Security | Not Started | Security checklist and safer boundaries | — | — |
@@ -149,6 +150,9 @@
 - Decisions made: keep the current file-backed app flow temporarily while introducing the DB repository boundary behind `database/sql`
 - Topics to revisit: mapping unique-constraint errors to `ErrJobAlreadyExists`; switching the app startup path from `LoadStore(...)` to a real database handle
 - Next action: wire a real `*sql.DB` into startup, verify connectivity with `PingContext`, and route operations through the repository
+
+
+
 
 
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"goflow/internal/goflow"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -20,11 +21,15 @@ type apiError struct {
 }
 
 type apiHandler struct {
-	store goflow.JobStore
+	store  goflow.JobStore
+	logger *slog.Logger
 }
 
 func newAPIHandler(store goflow.JobStore) *apiHandler {
-	return &apiHandler{store: store}
+	return &apiHandler{
+		store:  store,
+		logger: slog.New(slog.DiscardHandler),
+	}
 }
 
 func writeJSONError(w http.ResponseWriter, status int, code, message string) {
@@ -218,6 +223,15 @@ func (h *apiHandler) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "JOB_CREATE_FAILED", "Failed to create job")
 		return
 	}
+
+	requestID, _ := r.Context().Value(requestIDContextKey).(string)
+	h.logger.InfoContext(
+		r.Context(),
+		"job created",
+		"request_id", requestID,
+		"job_id", job.ID,
+		"job_type", job.Type,
+	)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

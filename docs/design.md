@@ -615,3 +615,83 @@ flowchart LR
 - Deterministic worker tests prove important job transitions without relying on scheduler timing.
 - Data-race freedom and logical correctness are separate concerns.
 - The worker loop is still simple, while its important behavior is now testable in isolation.
+
+## Week 3 Checkpoint: Worker Correctness Review
+
+### Goal
+
+Confirm that the worker design is understandable before moving into production-readiness modules.
+
+### Concurrency correctness map
+
+```mermaid
+flowchart TD
+    Poller[Poller goroutine] -->|send job IDs| JobsChannel[jobs channel]
+    JobsChannel --> Worker1[Worker 1]
+    JobsChannel --> Worker2[Worker 2]
+    JobsChannel --> Worker3[Worker 3]
+    Poller -->|read/write| Queued[queued map]
+    Worker1 -->|delete after claim attempt| Queued
+    Worker2 -->|delete after claim attempt| Queued
+    Worker3 -->|delete after claim attempt| Queued
+    Mutex[sync.Mutex] --> Queued
+    Repo[PostgreSQL] -->|persistent status| Claim[StartJob pending to running]
+    Claim --> Idempotency[Idempotent external execution required]
+```
+
+### Why this matters
+
+- The channel handles communication between poller and workers.
+- The mutex protects shared in-memory queue bookkeeping.
+- PostgreSQL status transitions provide persistent claim state.
+- Idempotency is still required because external effects and database updates are not one atomic operation.
+
+## Day 19 - Module 4.1: Structured Logging
+
+### Goal
+
+Make GoFlow's important runtime events machine-readable with standard-library JSON structured logs.
+
+### Design change
+
+- Added a JSON `slog.Logger` in the `serve` and `work` command boundaries.
+- Added `requestLoggingMiddleware` to log HTTP request completion.
+- Added a response-writer wrapper to capture response status codes.
+- Added handler-level `job created` logs after successful `POST /v1/jobs`.
+- Kept service and repository layers log-free so errors are logged once at the boundary.
+
+### HTTP logging flow
+
+```mermaid
+sequenceDiagram
+    participant Client as Client
+    participant ReqID as requestIDMiddleware
+    participant LogMW as requestLoggingMiddleware
+    participant Handler as HTTP Handler
+    participant Logger as slog JSON logger
+
+    Client->>ReqID: HTTP request
+    ReqID->>ReqID: assign request_id
+    ReqID->>LogMW: request with context
+    LogMW->>Handler: wrapped ResponseWriter
+    Handler-->>LogMW: response status/body
+    LogMW->>Logger: http request completed with request_id, method, path, status, duration_ms
+```
+
+### Worker logging flow
+
+```mermaid
+flowchart TD
+    Worker[Worker goroutine] --> Processing[log job processing]
+    Processing --> Execute[processQueuedJob]
+    Execute -->|success| Completed[log job completed]
+    Execute -->|failure| Failed[log job failed with error]
+    Execute -->|context canceled| Stopping[log worker stopping]
+```
+
+### Why this matters
+
+- `request_id` connects response headers to server-side logs.
+- `job_id` connects worker events for a single job.
+- JSON logs prepare the project for log aggregation and later observability work.
+- Logging at boundaries avoids duplicated service/repository logs.

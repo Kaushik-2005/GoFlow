@@ -1,6 +1,6 @@
 # GoFlow
 
-GoFlow is a staged learning project for building a production-style Go backend that accepts jobs, stores them, processes them asynchronously, retries transient failures, and surfaces operational behavior cleanly.
+GoFlow is a staged learning project for building a production-style Go backend that accepts jobs, stores them, processes them asynchronously, retries transient failures, and surfaces operational behavior with structured logs.
 
 The project follows `Go_Industry_Roadmap_4_Weeks.md`. Week 3 implementation is complete: the app now has a PostgreSQL-backed worker pool with retry scheduling, failure classification, dead-letter status, deterministic worker tests, and race-detector validation.
 
@@ -9,7 +9,8 @@ The project follows `Go_Industry_Roadmap_4_Weeks.md`. Week 3 implementation is c
 - Week 1 foundations completed
 - Week 2 HTTP, architecture, PostgreSQL, and testing completed
 - Week 3 worker pool, graceful shutdown, retry handling, and concurrency testing completed through Module 3.6
-- Current next step: Week 3 checkpoint, then Module 4.1 structured logging
+- Module 4.1 structured logging completed with JSON `slog` output
+- Current next step: Module 4.2 observability
 
 ## Requirements
 
@@ -73,5 +74,8 @@ go test ./...
 go test --% -coverprofile=coverage.out ./...
 go test -race ./...
 ```
+
+
+
 
 

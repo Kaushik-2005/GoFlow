@@ -2189,3 +2189,133 @@ Day 18 extracted `processQueuedJob(...)` from the worker loop so single-job work
 - `queued` needs a mutex because it is shared mutable map state.
 - `jobs` does not need a mutex because channels synchronize sends and receives internally.
 - Extracting `processQueuedJob(...)` made the important worker behavior testable without full worker-loop timing.
+
+### Week 3 Checkpoint - Concurrency and Worker Systems
+
+#### Concepts reviewed
+
+- Concurrency means multiple tasks are in progress during the same period.
+- Parallelism means multiple tasks are literally executing at the same time.
+- The sending side usually owns closing a channel because it knows when no more values will be sent.
+- Backpressure slows the producer when consumers cannot keep up.
+- Channels are for communication and work handoff; mutexes protect shared memory.
+- Data races are unsafe shared-memory access; logical races are incorrect behavior caused by ordering.
+- `running` status reduces duplicate work but does not remove the need for idempotent processing.
+- `go test -race ./...` detects observed data races, not all possible concurrency bugs.
+
+#### Debugging exercise
+
+A function that sends to an unbuffered channel before starting a receiver deadlocks because the send waits forever. The receiver must start first, the sender should close the channel when done, and the function should wait for the receiver goroutine to finish if completion matters.
+
+#### Implementation exercise design
+
+To test two workers processing two job IDs exactly once, start workers on a shared jobs channel, inject an executor that sends processed IDs into a result channel, wait for exactly two results, cancel or close the channel, wait for workers to exit, then assert each ID appears once.
+
+#### Remaining revision
+
+- Continue watching for logical races that the race detector cannot catch.
+- Keep worker tests deterministic by using explicit signals, fakes, and bounded timeouts.
+
+### Day 19: Module 4.1 - Structured Logging
+
+#### Concept
+
+Structured logging records events as a message plus machine-readable key-value fields. Instead of hiding important values inside a formatted string, GoFlow now logs fields such as `request_id`, `job_id`, `worker_id`, `method`, `path`, `status`, and `duration_ms`.
+
+#### Why it matters
+
+- Production logs are searched, filtered, grouped, and alerted on.
+- Structured fields make logs useful for debugging one request or one job.
+- JSON logs are easy for log collectors to parse.
+- Logging errors once at the boundary avoids duplicated noisy logs.
+- Avoiding payloads and secrets prevents accidental data leakage.
+
+#### Mental model
+
+- Use logs to answer: what happened?
+- Use fields to make logs searchable.
+- Log at the boundary that has the best operational context.
+- Service/repository code should usually return errors; CLI, worker, and HTTP boundaries decide how to log or present them.
+- Request IDs correlate HTTP logs; job IDs correlate worker logs.
+
+#### Syntax
+
+```go
+logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+```
+
+```go
+logger.InfoContext(
+	ctx,
+	"job completed",
+	"worker_id", workerID,
+	"job_id", jobID,
+)
+```
+
+```go
+logger.WarnContext(
+	ctx,
+	"job failed",
+	"worker_id", workerID,
+	"job_id", jobID,
+	"error", err,
+)
+```
+
+#### Idiomatic Go
+
+- Use `log/slog` from the standard library for structured logs.
+- Use `Info` for normal lifecycle/business events.
+- Use `Warn` for unusual but recoverable events, such as retryable job failures.
+- Use `Error` when an operation fails and needs attention.
+- Prefer `InfoContext`, `WarnContext`, and `ErrorContext` when request or command context exists.
+- Do not log full request bodies, payloads, credentials, tokens, or `DATABASE_URL`.
+
+#### Python comparison
+
+Python projects often start with `print(...)` and later move to structured logging via framework or logging configuration. In GoFlow, `slog` gives a standard-library structured logger directly, so logs can be made production-friendly without adding a logging dependency.
+
+#### Common mistakes
+
+- Logging complete payloads or secrets.
+- Putting IDs only inside message strings instead of fields.
+- Logging the same error in service and handler/worker layers.
+- Using `ERROR` for normal validation failures that are expected client behavior.
+- Letting repository code decide operational logging policy.
+
+#### Project application
+
+Day 19 added JSON structured logging to GoFlow:
+
+- Worker path logs `job processing`, `job completed`, `job failed`, `worker stopping`, and `work command stopping`.
+- HTTP middleware logs completed requests with `request_id`, `method`, `path`, `status`, and `duration_ms`.
+- HTTP create handler logs successful job creation with `request_id`, `job_id`, and `job_type`.
+- `apiHandler` uses a discard logger by default for tests and receives the real JSON logger in `serve`.
+
+#### Production implications
+
+- A single request can be traced by `request_id`.
+- A job can be traced across worker logs by `job_id`.
+- Logs are now suitable for later metrics/observability work.
+- The next improvement is to make logger configuration explicit instead of hardcoding JSON output.
+
+#### Interview questions
+
+1. Why are structured logs better than formatted strings in production?
+2. When would you use text logs versus JSON logs?
+3. Why should service code usually return errors instead of logging them?
+4. What fields should an HTTP request completion log include?
+5. Why should logs avoid secrets and full payloads?
+
+#### References
+
+- `log/slog` package: https://pkg.go.dev/log/slog
+- Go logging blog: https://go.dev/blog/slog
+
+#### My questions and corrections
+
+- Local text logs are easier for humans; production JSON logs are easier for machines.
+- `job_id`, `worker_id`, and `request_id` should be fields, not only text in the message.
+- The full request body should not be logged by default because it may become sensitive payload data.
+- `service.go` should preserve and return failure meaning while the caller decides how to log it.

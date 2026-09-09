@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"goflow/internal/goflow"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -178,7 +179,10 @@ func main() {
 
 		defer db.Close()
 
+		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
 		api := newAPIHandler(store)
+		api.logger = logger
 
 		mux := http.NewServeMux()
 		mux.HandleFunc("/health/live", api.liveHandler)
@@ -188,6 +192,7 @@ func main() {
 		handler := chain(
 			mux,
 			requestIDMiddleware,
+			requestLoggingMiddleware(logger),
 			recoveryMiddleware,
 			requestBodyLimitMiddleware(1<<20), // 1 MB limit
 			requireJSONMiddleware,
@@ -238,6 +243,8 @@ func main() {
 		}
 		defer db.Close()
 
+		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
 		queued := make(map[string]struct{})
 		var queueMu sync.Mutex
 
@@ -262,22 +269,22 @@ func main() {
 						delete(queued, jobID)
 						queueMu.Unlock()
 
-						fmt.Printf("worker %d processing job: %s\n", id, jobID)
+						logger.InfoContext(workCtx, "job processing", "worker_id", id, "job_id", jobID)
 
 						if err := processQueuedJob(workCtx, store, jobID, executeJob, time.Now); err != nil {
 							if errors.Is(err, context.Canceled) {
-								fmt.Printf("worker %d stopping\n", id)
+								logger.InfoContext(workCtx, "worker stopping", "worker_id", id)
 								return
 							}
 
-							fmt.Printf("worker %d failed job %s: %v\n", id, jobID, err)
+							logger.WarnContext(workCtx, "job failed", "worker_id", id, "job_id", jobID, "error", err)
 							continue
 						}
 
-						fmt.Printf("worker %d completed job: %s\n", id, jobID)
+						logger.InfoContext(workCtx, "job completed", "worker_id", id, "job_id", jobID)
 
 					case <-workCtx.Done():
-						fmt.Printf("worker %d stopping\n", id)
+						logger.InfoContext(workCtx, "worker stopping", "worker_id", id)
 						return
 					}
 				}
@@ -296,11 +303,11 @@ func main() {
 			jobsList, err := store.ListReadyJobs(workCtx)
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
-					fmt.Println("work command stopping")
+					logger.InfoContext(workCtx, "work command stopping")
 					stopWorkers()
 					return
 				}
-				fmt.Printf("failed to list jobs: %v\n", err)
+				logger.ErrorContext(workCtx, "failed to list ready jobs", "error", err)
 			} else {
 				for _, job := range jobsList {
 
@@ -318,7 +325,7 @@ func main() {
 					select {
 					case jobs <- job.ID:
 					case <-workCtx.Done():
-						fmt.Println("work command stopping")
+						logger.InfoContext(workCtx, "work command stopping")
 						stopWorkers()
 						return
 					}
@@ -328,7 +335,7 @@ func main() {
 			select {
 			case <-ticker.C:
 			case <-workCtx.Done():
-				fmt.Println("work command stopping")
+				logger.InfoContext(workCtx, "work command stopping")
 				stopWorkers()
 				return
 			}
