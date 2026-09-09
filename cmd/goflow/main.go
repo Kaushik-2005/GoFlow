@@ -258,42 +258,19 @@ func main() {
 							return
 						}
 
-						err := goflow.StartJob(workCtx, store, jobID)
-
 						queueMu.Lock()
 						delete(queued, jobID)
 						queueMu.Unlock()
 
-						if err != nil {
-							fmt.Printf("worker %d failed to start job %s: %v\n", id, jobID, err)
-							continue
-						}
-
-						job, err := store.Get(workCtx, jobID)
-						if err != nil {
-							fmt.Printf("worker %d failed to load job %s: %v\n", id, jobID, err)
-							continue
-						}
-
 						fmt.Printf("worker %d processing job: %s\n", id, jobID)
 
-						if err := executeJob(workCtx, job); err != nil {
+						if err := processQueuedJob(workCtx, store, jobID, executeJob, time.Now); err != nil {
 							if errors.Is(err, context.Canceled) {
 								fmt.Printf("worker %d stopping\n", id)
 								return
 							}
 
-							if failErr := goflow.FailJob(workCtx, store, jobID, err, time.Now()); failErr != nil {
-								fmt.Printf("worker %d failed to record job failure %s: %v\n", id, jobID, failErr)
-								continue
-							}
-
-							fmt.Printf("worker %d failed job: %s: %v\n", id, jobID, err)
-							continue
-						}
-
-						if err := goflow.CompleteJob(workCtx, store, jobID); err != nil {
-							fmt.Printf("worker %d failed to complete job %s: %v\n", id, jobID, err)
+							fmt.Printf("worker %d failed job %s: %v\n", id, jobID, err)
 							continue
 						}
 

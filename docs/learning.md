@@ -2091,3 +2091,101 @@ Day 17 added retry and failure handling to GoFlow:
 - A permanent failure still increments `attempts` because the worker did attempt execution.
 - `last_error` explains why the latest execution failed.
 - `available_at` keeps retry timing in persistent state and frees workers to process other jobs.
+
+### Day 18: Module 3.6 - Concurrency Testing
+
+#### Concept
+
+Concurrency testing checks whether goroutine-based code is both memory-safe and behaviorally correct. In Go, this means using the race detector for unsafe shared-memory access and writing deterministic tests for worker behavior, shutdown, and coordination logic.
+
+#### Why it matters
+
+- Concurrent systems can fail only under certain timing orders.
+- Passing ordinary unit tests does not prove goroutine code is safe.
+- The race detector catches data races, but it does not prove business logic is correct.
+- Deterministic tests reduce flakes by waiting for real signals or directly testing small units instead of guessing with `time.Sleep(...)`.
+
+#### Mental model
+
+- A data race is unsafe concurrent memory access: two goroutines access the same memory, at least one writes, and there is no synchronization.
+- A logical race is a correct-memory program with wrong behavior caused by ordering, such as duplicate job enqueueing.
+- Channels are safe communication primitives.
+- Normal maps are shared mutable memory and need synchronization when accessed by multiple goroutines.
+- Race tests observe only executed code paths, so coverage and focused tests still matter.
+
+#### Syntax
+
+```go
+go test -race ./...
+```
+
+```go
+select {
+case <-done:
+	// observed completion signal
+case <-time.After(time.Second):
+	t.Fatal("worker did not finish")
+}
+```
+
+```go
+func processQueuedJob(
+	ctx context.Context,
+	store goflow.JobStore,
+	jobID string,
+	executor jobExecutor,
+	now clockFunc,
+) error
+```
+
+#### Idiomatic Go
+
+- Prefer deterministic signals over arbitrary sleeps in concurrency tests.
+- Inject dependencies such as executors and clocks when they make tests direct and reliable.
+- Use `go test -race ./...` as a required validation step for concurrent code.
+- Keep business behavior testable without forcing tests through full CLI loops, OS signals, database setup, and real timing.
+
+#### Python comparison
+
+Python developers often rely on higher-level queues, task frameworks, or mocks around threaded code. In Go, goroutines and channels are direct language tools, so tests should explicitly validate synchronization, cancellation, and worker behavior.
+
+#### Common mistakes
+
+- Thinking `go test -race` proves there are no concurrency bugs.
+- Using `time.Sleep(...)` as the main synchronization mechanism in tests.
+- Confusing data races with logical races.
+- Testing only the full command path when the important behavior can be extracted into a smaller deterministic function.
+- Assuming maps are safe because channel operations are safe.
+
+#### Project application
+
+Day 18 extracted `processQueuedJob(...)` from the worker loop so single-job worker behavior can be tested directly. The tests now cover successful completion, temporary failure retry scheduling, permanent failure dead-lettering, and context cancellation without depending on polling intervals or real execution sleeps.
+
+#### Production implications
+
+- Race-free memory access is necessary but not sufficient for correct worker behavior.
+- Deterministic tests make CI more reliable.
+- The worker loop remains integration behavior, while `processQueuedJob(...)` gives a focused unit seam for the job state machine at the command boundary.
+- Toolchain setup matters: Windows race testing requires a working cgo-compatible C compiler.
+
+#### Interview questions
+
+1. What does the Go race detector detect?
+2. Why can a race-free program still have a logical concurrency bug?
+3. Why are channel signals better than `time.Sleep(...)` in concurrency tests?
+4. Why should shared maps be protected with a mutex?
+5. Why is dependency injection useful for testing worker code?
+
+#### References
+
+- Go data race detector: https://go.dev/doc/articles/race_detector
+- Go testing package: https://pkg.go.dev/testing
+- Go sync package: https://pkg.go.dev/sync
+
+#### My questions and corrections
+
+- `go test -race ./...` only detects unsafe memory races on executed code paths.
+- Logical races include duplicate work, missed jobs, early shutdown, or incorrect claim ordering.
+- `queued` needs a mutex because it is shared mutable map state.
+- `jobs` does not need a mutex because channels synchronize sends and receives internally.
+- Extracting `processQueuedJob(...)` made the important worker behavior testable without full worker-loop timing.

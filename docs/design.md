@@ -567,3 +567,51 @@ sequenceDiagram
 - Workers are not blocked sleeping for future retries.
 - Dead-letter jobs remain queryable for diagnosis.
 - Service-layer transition functions prevent worker code from spreading business rules across the command layer.
+
+## Day 18 - Module 3.6: Concurrency Testing
+
+### Goal
+
+Make GoFlow's worker behavior testable under deterministic conditions and validate the code with the Go race detector.
+
+### Design change
+
+- Extracted single-job worker behavior into `processQueuedJob(...)`.
+- Injected the job executor so tests can force success, temporary failure, permanent failure, or cancellation.
+- Injected the clock so retry scheduling can be asserted without relying on real time.
+- Kept the long-running polling loop in `main.go`, but moved the state-transition path into a focused test seam.
+
+### Test seam flow
+
+```mermaid
+flowchart TD
+    Test[Test case] --> FakeStore[Fake JobStore]
+    Test --> FakeExecutor[Injected executor]
+    Test --> FakeClock[Injected now function]
+    FakeStore --> Process[processQueuedJob]
+    FakeExecutor --> Process
+    FakeClock --> Process
+    Process --> Start[StartJob pending to running]
+    Start --> Execute[executor result]
+    Execute -->|success| Complete[CompleteJob running to completed]
+    Execute -->|temporary failure| Retry[FailJob running to pending with available_at]
+    Execute -->|permanent failure| Dead[FailJob running to dead_letter]
+    Execute -->|context canceled| Canceled[return context.Canceled]
+```
+
+### Race validation flow
+
+```mermaid
+flowchart LR
+    Tests[go test ./...] --> Normal[Behavior validation]
+    Race[go test -race ./...] --> Instrumented[Runtime race instrumentation]
+    Instrumented --> Access[Observe executed shared-memory accesses]
+    Access --> Result[Report unsafe read/write races]
+```
+
+### Why this matters
+
+- The race detector catches data races only on code paths that tests execute.
+- Deterministic worker tests prove important job transitions without relying on scheduler timing.
+- Data-race freedom and logical correctness are separate concerns.
+- The worker loop is still simple, while its important behavior is now testable in isolation.

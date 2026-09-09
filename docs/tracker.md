@@ -5,8 +5,8 @@
 - Current week: Week 3
 - Current module: Day 18 - Module 3.6
 - Current topic: Concurrency testing
-- Current task: Start Module 3.6 with race detector, deterministic concurrent tests, and worker behavior validation
-- Next milestone: Add race-focused worker tests and improve deterministic concurrency validation
+- Current task: Prepare Week 3 checkpoint review before starting Week 4
+- Next milestone: Complete Week 3 checkpoint, then start Day 19 - Module 4.1 structured logging
 - Active blockers: None for current testing work; live PostgreSQL validation completed on 2026-09-02
 
 ## Roadmap Progress
@@ -30,7 +30,7 @@
 | 15 | Module 3.3 | Worker pool | Completed | Three-worker pool with shared queue, worker IDs, and coordinated shutdown | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow create email`; `go run ./cmd/goflow work`; runtime showed `worker 1`, `worker 2`, and `worker 3` each processing different jobs and stopping cleanly on shutdown | 4 |
 | 16 | Module 3.4 | Context and graceful shutdown | Completed | Controlled shutdown and cancellation flow for HTTP server and worker pool | `gofmt -w ./cmd/goflow/main.go`; `go vet ./...`; `go test ./...`; `go run ./cmd/goflow serve`; `go run ./cmd/goflow work`; learner explained context ownership, cancellation trees, `ctx.Done()` vs `ctx.Err()`, why `ListenAndServe()` runs in a goroutine, why shutdown uses a fresh timeout context, and why goroutine shutdown log order is not deterministic | 4 |
 | 17 | Module 3.5 | Retries and failure handling | Completed | Retry policy, `available_at` scheduling, retryable/permanent failure classification, and dead-letter status | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/worker.go ./cmd/goflow/worker_test.go`; `gofmt -w ./internal/goflow/service.go ./internal/goflow/service_test.go ./internal/goflow/postgres_repository.go ./internal/goflow/postgres_repository_test.go`; `go vet ./...`; `go test ./...`; `go test -run TestPostgresRepositoryIntegration ./internal/goflow -v`; `go test -race ./...` attempted but blocked by local Windows `cgo.exe`; learner explained transient vs permanent failures, retry budget exhaustion, dead-letter purpose, idempotency, `last_error`, and `available_at` scheduling | 4 |
-| 18 | Module 3.6 | Concurrency testing | Not Started | Race-tested worker behavior | — | — |
+| 18 | Module 3.6 | Concurrency testing | Completed | Race-tested worker behavior with deterministic worker transition tests | `gofmt -w ./cmd/goflow/worker.go ./cmd/goflow/main.go ./cmd/goflow/worker_test.go`; `go test -run TestProcessQueuedJob ./cmd/goflow -v`; `go vet ./...`; `go test ./...`; `go test -race ./...`; learner explained data races versus logical races and why deterministic worker tests avoid timing dependence | 4 |
 | 19 | Module 4.1 | Structured logging | Not Started | Structured logs in API and worker paths | — | — |
 | 20 | Module 4.2 | Observability | Not Started | Metrics and health signals | — | — |
 | 21 | Module 4.3 | Profiling and performance | Not Started | Measured performance baseline | — | — |
@@ -149,6 +149,8 @@
 - Decisions made: keep the current file-backed app flow temporarily while introducing the DB repository boundary behind `database/sql`
 - Topics to revisit: mapping unique-constraint errors to `ErrJobAlreadyExists`; switching the app startup path from `LoadStore(...)` to a real database handle
 - Next action: wire a real `*sql.DB` into startup, verify connectivity with `PingContext`, and route operations through the repository
+
+
 
 
 

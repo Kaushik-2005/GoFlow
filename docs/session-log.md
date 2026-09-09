@@ -1115,3 +1115,50 @@
 ### Next session
 
 - Start Day 18 - Module 3.6 with race detector behavior, deterministic worker tests, and goroutine leak risk
+
+## 2026-09-09 - Module 3.6 concurrency testing completed
+
+### Topics covered
+
+- Data races versus logical races
+- Race detector behavior and limits
+- Timing-dependent tests
+- Deterministic worker tests
+- Dependency injection for executors and clocks
+- Windows cgo compiler setup for `go test -race`
+
+### Work completed
+
+- Extracted `processQueuedJob(...)` from the worker loop
+- Updated the worker loop to call the extracted function
+- Added deterministic tests for worker success, temporary failure retry, permanent failure dead-lettering, and context cancellation
+- Fixed local race-detector validation by using the MSYS2 UCRT64 GCC toolchain
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/worker.go ./cmd/goflow/main.go`
+- `gofmt -w ./cmd/goflow/worker_test.go`
+- `go test -run TestProcessQueuedJob ./cmd/goflow -v`
+- `go vet ./...`
+- `go test ./...`
+- `go test -race ./...`
+
+### Problems encountered
+
+- `go test -race ./...` initially failed because PowerShell resolved GCC from `C:\msys64\mingw64\bin` instead of the UCRT64 toolchain.
+- The issue was fixed by using `C:\msys64\ucrt64\bin\gcc.exe` and ensuring UCRT64 is ahead of MINGW64 in PATH.
+
+### What I understood well
+
+- A data race is unsafe concurrent memory access.
+- A logical race can still exist even when memory access is synchronized.
+- Race detector passing is evidence, not proof of all concurrency correctness.
+- Deterministic tests should wait for proof or test a small unit directly instead of sleeping.
+
+### What needs revision
+
+- Week 3 checkpoint should still review at-least-once execution, idempotency, backpressure, worker shutdown, and channel versus mutex trade-offs.
+
+### Next session
+
+- Complete the Week 3 checkpoint before starting Day 19 - Module 4.1 structured logging.
