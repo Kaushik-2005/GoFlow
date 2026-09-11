@@ -10,7 +10,8 @@ The project follows `Go_Industry_Roadmap_4_Weeks.md`. Week 3 implementation is c
 - Week 2 HTTP, architecture, PostgreSQL, and testing completed
 - Week 3 worker pool, graceful shutdown, retry handling, and concurrency testing completed through Module 3.6
 - Module 4.1 structured logging completed with JSON `slog` output
-- Current next step: Module 4.2 observability
+- Module 4.2 observability completed with readiness and JSON metrics
+- Current next step: Module 4.3 profiling and performance
 
 ## Requirements
 
@@ -56,6 +57,8 @@ Test job types:
 Current HTTP API:
 
 - `GET /health/live`
+- `GET /health/ready`
+- `GET /metrics`
 - `GET /v1/jobs`
 - `GET /v1/jobs?status=pending`
 - `GET /v1/jobs/{id}`
@@ -74,6 +77,8 @@ go test ./...
 go test --% -coverprofile=coverage.out ./...
 go test -race ./...
 ```
+
+
 
 
 

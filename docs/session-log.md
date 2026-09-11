@@ -1256,3 +1256,57 @@
 ### Next session
 
 - Start Day 20 - Module 4.2 observability with metrics and health signals.
+
+## 2026-09-11 - Module 4.2 observability completed
+
+### Topics covered
+
+- Logs, metrics, and traces
+- Counters, gauges, and histograms
+- Metric labels and high-cardinality risk
+- Liveness versus readiness checks
+- In-process metrics limitations
+- HTTP duration buckets
+
+### Work completed
+
+- Added `GET /health/ready`
+- Added PostgreSQL readiness check through `Ping(ctx)`
+- Added `GET /metrics`
+- Added mutex-protected in-process metrics collector
+- Added HTTP request counter and duration buckets
+- Added job submitted counter
+- Added worker active/queue gauges and job outcome counters
+- Added readiness and metrics tests
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/main.go ./cmd/goflow/middleware.go ./cmd/goflow/metrics.go ./cmd/goflow/metrics_test.go ./internal/goflow/postgres_repository.go`
+- `go test -run TestReadyHandler ./cmd/goflow -v`
+- `go test -run "TestMetrics|TestObserveHTTPRequestDurationBuckets" ./cmd/goflow -v`
+- `go vet ./...`
+- `go test ./...`
+- `curl.exe -i http://localhost:8080/health/ready`
+- `curl.exe http://localhost:8080/metrics`
+- `curl.exe http://localhost:8080/health/live`
+
+### Problems encountered
+
+- The agent environment still hits Windows ThreadSanitizer allocation failures for `go test -race`; normal validation passed.
+- Worker metrics are in-process only and are not visible from the separate `serve` process `/metrics` endpoint.
+
+### What I understood well
+
+- Logs, metrics, and traces answer different operational questions.
+- Counters only increase; gauges can move up and down; histograms show distributions.
+- High-cardinality labels can damage metrics systems.
+- Liveness and readiness have different operational meanings.
+
+### What needs revision
+
+- Real metrics exporters and Prometheus-style scraping are future production topics.
+- Profiling and performance measurement start next.
+
+### Next session
+
+- Start Day 21 - Module 4.3 profiling and performance with benchmarks, pprof, and measured optimization.

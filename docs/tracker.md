@@ -3,10 +3,10 @@
 ## Current Position
 
 - Current week: Week 4
-- Current module: Day 19 - Module 4.1
-- Current topic: Structured logging
-- Current task: Start Day 20 - Module 4.2 observability
-- Next milestone: Add metrics and health signals
+- Current module: Day 21 - Module 4.3
+- Current topic: Profiling and performance
+- Current task: Start Day 21 - Module 4.3 profiling and performance
+- Next milestone: Add benchmark/profile baseline
 - Active blockers: None for current testing work; live PostgreSQL validation completed on 2026-09-02
 
 ## Roadmap Progress
@@ -33,7 +33,7 @@
 | 18 | Module 3.6 | Concurrency testing | Completed | Race-tested worker behavior with deterministic worker transition tests | `gofmt -w ./cmd/goflow/worker.go ./cmd/goflow/main.go ./cmd/goflow/worker_test.go`; `go test -run TestProcessQueuedJob ./cmd/goflow -v`; `go vet ./...`; `go test ./...`; `go test -race ./...`; learner explained data races versus logical races and why deterministic worker tests avoid timing dependence | 4 |
 | Week 3 checkpoint | Checkpoint | Concurrency and worker review | Completed | Concept questions, debugging exercise, and worker-pool test design completed | learner explained concurrency vs parallelism, channel ownership, backpressure, channel vs mutex, data vs logical races, idempotency, and race-detector limits; learner debugged an unbuffered-channel deadlock and designed a two-worker exact-once processing test | 4 |
 | 19 | Module 4.1 | Structured logging | Completed | JSON structured logs in worker and HTTP API boundaries | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/middleware.go ./cmd/goflow/http.go`; `go vet ./...`; `go test ./...`; runtime validated worker JSON logs, HTTP request logs with matching `request_id`, and `job created` logs with `job_id` and `job_type`; learner explained log levels, text vs JSON handlers, correlation IDs, avoiding payload/secrets, and logging errors once at the boundary | 4 |
-| 20 | Module 4.2 | Observability | Not Started | Metrics and health signals | — | — |
+| 20 | Module 4.2 | Observability | Completed | Readiness endpoint plus in-process HTTP and worker metrics | `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/main.go ./cmd/goflow/middleware.go ./cmd/goflow/metrics.go ./cmd/goflow/metrics_test.go ./internal/goflow/postgres_repository.go`; `go test -run TestReadyHandler ./cmd/goflow -v`; `go test -run "TestMetrics|TestObserveHTTPRequestDurationBuckets" ./cmd/goflow -v`; `go vet ./...`; `go test ./...`; runtime validated `/health/ready`, `/metrics`, HTTP request counts, and HTTP duration buckets; learner explained logs, metrics, traces, counters, gauges, histograms, labels, high-cardinality risk, liveness, and readiness | 4 |
 | 21 | Module 4.3 | Profiling and performance | Not Started | Measured performance baseline | — | — |
 | 22 | Module 4.4 | Security | Not Started | Security checklist and safer boundaries | — | — |
 | 23 | Module 4.5 | Containers and configuration | Not Started | Containerized builds and startup config validation | — | — |
@@ -150,6 +150,8 @@
 - Decisions made: keep the current file-backed app flow temporarily while introducing the DB repository boundary behind `database/sql`
 - Topics to revisit: mapping unique-constraint errors to `ErrJobAlreadyExists`; switching the app startup path from `LoadStore(...)` to a real database handle
 - Next action: wire a real `*sql.DB` into startup, verify connectivity with `PingContext`, and route operations through the repository
+
+
 
 
 

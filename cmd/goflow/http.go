@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,15 +21,22 @@ type apiError struct {
 	Message string `json:"message"`
 }
 
+type readinessChecker interface {
+	Ping(ctx context.Context) error
+}
+
 type apiHandler struct {
-	store  goflow.JobStore
-	logger *slog.Logger
+	store   goflow.JobStore
+	ready   readinessChecker
+	logger  *slog.Logger
+	metrics *metrics
 }
 
 func newAPIHandler(store goflow.JobStore) *apiHandler {
 	return &apiHandler{
-		store:  store,
-		logger: slog.New(slog.DiscardHandler),
+		store:   store,
+		logger:  slog.New(slog.DiscardHandler),
+		metrics: newMetrics(),
 	}
 }
 
@@ -56,6 +64,42 @@ func (h *apiHandler) liveHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"status": "ok",
 	})
+}
+
+func (h *apiHandler) readyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
+		return
+	}
+
+	if h.ready == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "SERVICE_NOT_READY", "The service is not ready")
+		return
+	}
+
+	if err := h.ready.Ping(r.Context()); err != nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "DATABASE_NOT_READY", "The database is not ready")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "ready",
+	})
+}
+
+func (h *apiHandler) metricsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "The requested method is not allowed for this endpoint")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	json.NewEncoder(w).Encode(h.metrics.snapshot())
 }
 
 func (h *apiHandler) jobsHandler(w http.ResponseWriter, r *http.Request) {
@@ -232,6 +276,10 @@ func (h *apiHandler) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		"job_id", job.ID,
 		"job_type", job.Type,
 	)
+
+	if h.metrics != nil {
+		h.metrics.incrementJobsSubmitted()
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

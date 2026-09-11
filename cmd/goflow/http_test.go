@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +19,7 @@ type fakeAPIStore struct {
 	createHit bool
 	deletedID string
 	deleteHit bool
+	pingErr   error
 }
 
 func (f *fakeAPIStore) Create(ctx context.Context, job goflow.Job) error {
@@ -46,6 +48,10 @@ func (f *fakeAPIStore) List(ctx context.Context) ([]goflow.Job, error) {
 
 func (f *fakeAPIStore) Update(ctx context.Context, job goflow.Job) error {
 	return nil
+}
+
+func (f *fakeAPIStore) Ping(ctx context.Context) error {
+	return f.pingErr
 }
 
 func (f *fakeAPIStore) Delete(ctx context.Context, id string) error {
@@ -108,6 +114,79 @@ func TestLiveHandler(t *testing.T) {
 			assertJSONResponse(t, response, tt.wantStatus, tt.wantContains...)
 		})
 	}
+}
+
+func TestReadyHandler(t *testing.T) {
+	tests := []struct {
+		name         string
+		method       string
+		ready        readinessChecker
+		wantStatus   int
+		wantContains []string
+	}{
+		{
+			name:         "ready",
+			method:       http.MethodGet,
+			ready:        &fakeAPIStore{},
+			wantStatus:   http.StatusOK,
+			wantContains: []string{`"status":"ready"`},
+		},
+		{
+			name:         "database not ready",
+			method:       http.MethodGet,
+			ready:        &fakeAPIStore{pingErr: errors.New("database unavailable")},
+			wantStatus:   http.StatusServiceUnavailable,
+			wantContains: []string{`"code":"DATABASE_NOT_READY"`},
+		},
+		{
+			name:         "post rejected",
+			method:       http.MethodPost,
+			ready:        &fakeAPIStore{},
+			wantStatus:   http.StatusMethodNotAllowed,
+			wantContains: []string{`"code":"METHOD_NOT_ALLOWED"`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := newAPIHandler(&fakeAPIStore{})
+			api.ready = tt.ready
+			request := httptest.NewRequest(tt.method, "/health/ready", nil)
+			response := httptest.NewRecorder()
+
+			api.readyHandler(response, request)
+			assertJSONResponse(t, response, tt.wantStatus, tt.wantContains...)
+		})
+	}
+}
+
+func TestMetricsHandler(t *testing.T) {
+	api := newAPIHandler(&fakeAPIStore{})
+	api.metrics.incrementHTTPRequests()
+	api.metrics.incrementJobsSubmitted()
+
+	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	response := httptest.NewRecorder()
+
+	api.metricsHandler(response, request)
+	assertJSONResponse(
+		t,
+		response,
+		http.StatusOK,
+		`"http_requests_total":1`,
+		`"jobs_submitted_total":1`,
+		`"active_workers":0`,
+		`"queue_depth":0`,
+	)
+}
+
+func TestMetricsHandlerMethodNotAllowed(t *testing.T) {
+	api := newAPIHandler(&fakeAPIStore{})
+	request := httptest.NewRequest(http.MethodPost, "/metrics", nil)
+	response := httptest.NewRecorder()
+
+	api.metricsHandler(response, request)
+	assertJSONResponse(t, response, http.StatusMethodNotAllowed, `"code":"METHOD_NOT_ALLOWED"`)
 }
 
 func TestJobsHandlerMethodNotAllowed(t *testing.T) {
@@ -387,5 +466,19 @@ func TestCreateJobHandler(t *testing.T) {
 				t.Fatalf("expected created job status %q, got %q", goflow.StatusPending, tt.store.created.Status)
 			}
 		})
+	}
+}
+
+func TestCreateJobHandlerIncrementsSubmittedMetric(t *testing.T) {
+	api := newAPIHandler(&fakeAPIStore{})
+	request := httptest.NewRequest(http.MethodPost, "/v1/jobs", strings.NewReader(`{"type":"email"}`))
+	response := httptest.NewRecorder()
+
+	api.createJobHandler(response, request)
+	assertJSONResponse(t, response, http.StatusCreated, `"type":"email"`)
+
+	snapshot := api.metrics.snapshot()
+	if snapshot.JobsSubmittedTotal != 1 {
+		t.Fatalf("expected jobs_submitted_total 1, got %d", snapshot.JobsSubmittedTotal)
 	}
 }

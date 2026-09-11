@@ -19,6 +19,14 @@ func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
+func (r *PostgresRepository) Ping(ctx context.Context) error {
+	if err := r.db.PingContext(ctx); err != nil {
+		return fmt.Errorf("ping database: %w", err)
+	}
+
+	return nil
+}
+
 func (r *PostgresRepository) Create(ctx context.Context, job Job) error {
 	const query = `
 		INSERT INTO jobs (id, job_type, payload, status, attempts, max_attempts, available_at, last_error)

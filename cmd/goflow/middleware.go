@@ -22,7 +22,7 @@ func (w *statusResponseWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
-func requestLoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
+func requestLoggingMiddleware(logger *slog.Logger, metrics *metrics) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -33,6 +33,12 @@ func requestLoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handl
 
 			next.ServeHTTP(wrapped, r)
 
+			durationMS := time.Since(start).Milliseconds()
+			if metrics != nil {
+				metrics.incrementHTTPRequests()
+				metrics.observeHTTPRequestDuration(durationMS)
+			}
+
 			requestID, _ := r.Context().Value(requestIDContextKey).(string)
 			logger.InfoContext(
 				r.Context(),
@@ -41,7 +47,7 @@ func requestLoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handl
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", wrapped.status,
-				"duration_ms", time.Since(start).Milliseconds(),
+				"duration_ms", durationMS,
 			)
 		})
 	}

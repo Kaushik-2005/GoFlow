@@ -180,19 +180,24 @@ func main() {
 		defer db.Close()
 
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		metrics := newMetrics()
 
 		api := newAPIHandler(store)
+		api.ready = store
 		api.logger = logger
+		api.metrics = metrics
 
 		mux := http.NewServeMux()
 		mux.HandleFunc("/health/live", api.liveHandler)
+		mux.HandleFunc("/health/ready", api.readyHandler)
+		mux.HandleFunc("/metrics", api.metricsHandler)
 		mux.HandleFunc("/v1/jobs", api.jobsHandler)
 		mux.HandleFunc("/v1/jobs/", api.jobByIDHandler)
 
 		handler := chain(
 			mux,
 			requestIDMiddleware,
-			requestLoggingMiddleware(logger),
+			requestLoggingMiddleware(logger, metrics),
 			recoveryMiddleware,
 			requestBodyLimitMiddleware(1<<20), // 1 MB limit
 			requireJSONMiddleware,
@@ -244,6 +249,7 @@ func main() {
 		defer db.Close()
 
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		workerMetrics := newMetrics()
 
 		queued := make(map[string]struct{})
 		var queueMu sync.Mutex
@@ -269,18 +275,34 @@ func main() {
 						delete(queued, jobID)
 						queueMu.Unlock()
 
+						workerMetrics.decrementQueueDepth()
+						workerMetrics.incrementActiveWorkers()
 						logger.InfoContext(workCtx, "job processing", "worker_id", id, "job_id", jobID)
 
-						if err := processQueuedJob(workCtx, store, jobID, executeJob, time.Now); err != nil {
+						err := processQueuedJob(workCtx, store, jobID, executeJob, time.Now)
+						workerMetrics.decrementActiveWorkers()
+						if err != nil {
 							if errors.Is(err, context.Canceled) {
 								logger.InfoContext(workCtx, "worker stopping", "worker_id", id)
 								return
+							}
+
+							workerMetrics.incrementJobsExecutionFailed()
+							updatedJob, loadErr := store.Get(workCtx, jobID)
+							if loadErr == nil {
+								switch updatedJob.Status {
+								case goflow.StatusPending:
+									workerMetrics.incrementJobsRetried()
+								case goflow.StatusDeadLetter:
+									workerMetrics.incrementJobsDeadLettered()
+								}
 							}
 
 							logger.WarnContext(workCtx, "job failed", "worker_id", id, "job_id", jobID, "error", err)
 							continue
 						}
 
+						workerMetrics.incrementJobsCompleted()
 						logger.InfoContext(workCtx, "job completed", "worker_id", id, "job_id", jobID)
 
 					case <-workCtx.Done():
@@ -324,6 +346,7 @@ func main() {
 
 					select {
 					case jobs <- job.ID:
+						workerMetrics.incrementQueueDepth()
 					case <-workCtx.Done():
 						logger.InfoContext(workCtx, "work command stopping")
 						stopWorkers()

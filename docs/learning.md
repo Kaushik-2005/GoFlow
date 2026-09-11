@@ -2319,3 +2319,116 @@ Day 19 added JSON structured logging to GoFlow:
 - `job_id`, `worker_id`, and `request_id` should be fields, not only text in the message.
 - The full request body should not be logged by default because it may become sensitive payload data.
 - `service.go` should preserve and return failure meaning while the caller decides how to log it.
+
+### Day 20: Module 4.2 - Observability
+
+#### Concept
+
+Observability is the ability to understand what a system is doing from the outside. The three main signals are logs, metrics, and traces.
+
+#### Why it matters
+
+- Production systems fail in ways that are hard to reproduce locally.
+- Health checks tell infrastructure whether to restart or route traffic.
+- Metrics show trends, rates, and current runtime state.
+- Logs explain individual events and include correlation IDs.
+- Traces connect work across components and show where time was spent.
+
+#### Mental model
+
+- Logs answer: what happened?
+- Metrics answer: how often, how many, or how slow?
+- Traces answer: where was time spent across a request or workflow?
+- Liveness checks should show whether the process is alive.
+- Readiness checks should show whether the process can serve real traffic.
+
+#### Syntax
+
+```go
+type metrics struct {
+	mu sync.Mutex
+
+	httpRequestsTotal int
+	activeWorkers     int
+	queueDepth        int
+}
+```
+
+```go
+func (m *metrics) snapshot() metricsSnapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return metricsSnapshot{...}
+}
+```
+
+```go
+func (r *PostgresRepository) Ping(ctx context.Context) error {
+	return r.db.PingContext(ctx)
+}
+```
+
+#### Idiomatic Go
+
+- Protect in-process metrics with a mutex when handlers and goroutines can access them concurrently.
+- Use counters for values that only increase.
+- Use gauges for values that can go up and down.
+- Use histograms or buckets for durations and sizes.
+- Avoid high-cardinality metric labels such as `request_id`, `job_id`, email addresses, raw URLs, and raw errors.
+- Keep `/health/live` simple and independent of downstream services.
+- Use `/health/ready` for dependency checks such as PostgreSQL connectivity.
+
+#### Python comparison
+
+Python web apps often get observability through framework middleware and third-party packages. GoFlow uses small standard-library pieces first: explicit HTTP handlers, a mutex-protected collector, JSON output, and simple readiness checks.
+
+#### Common mistakes
+
+- Treating health checks and metrics as the same thing.
+- Making liveness depend on PostgreSQL and causing unnecessary process restarts.
+- Using IDs as metric labels and creating high-cardinality time series.
+- Storing high-frequency metrics counters in PostgreSQL.
+- Assuming an in-memory metrics endpoint in one process can observe counters from another process.
+
+#### Project application
+
+Day 20 added observability basics to GoFlow:
+
+- Added `GET /health/ready` backed by `PostgresRepository.Ping(ctx)`.
+- Added a small `readinessChecker` interface for the readiness endpoint.
+- Added `GET /metrics` returning a JSON metrics snapshot.
+- Added HTTP request counters and simple HTTP duration buckets.
+- Added job submitted counter.
+- Added worker-process gauges for active workers and queue depth.
+- Added worker-process counters for completed, failed, retried, and dead-lettered jobs.
+- Added tests for readiness and metrics behavior.
+
+#### Production implications
+
+- `/health/live` returns process liveness and should not fail only because the database is down.
+- `/health/ready` returns service readiness and should fail when PostgreSQL is unavailable.
+- `/metrics` should remain available during incidents when possible.
+- Current worker metrics are in-process only; because `serve` and `work` are separate commands/processes, server `/metrics` cannot see worker-process counters yet.
+- A future production version should use a real metrics exporter or run API and worker metrics through a shared observability system.
+
+#### Interview questions
+
+1. What is the difference between logs, metrics, and traces?
+2. What is the difference between liveness and readiness?
+3. When should you use a counter, gauge, or histogram?
+4. Why are `request_id` and `job_id` bad metric labels?
+5. Why should metrics usually not be stored in PostgreSQL counters?
+
+#### References
+
+- Go diagnostics guide: https://go.dev/doc/diagnostics
+- `net/http` package: https://pkg.go.dev/net/http
+- `sync` package: https://pkg.go.dev/sync
+
+#### My questions and corrections
+
+- `job_id` belongs in logs, not metric labels, because it has very high cardinality.
+- `/health/live` should stay simple and return alive even if PostgreSQL is down.
+- `/health/ready` should check PostgreSQL because real traffic depends on it.
+- `/metrics` should still return in-memory diagnostics during incidents when possible.
+- Average latency hides slow outliers; p95/p99 or buckets show tail latency better.

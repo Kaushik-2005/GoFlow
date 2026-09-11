@@ -695,3 +695,57 @@ flowchart TD
 - `job_id` connects worker events for a single job.
 - JSON logs prepare the project for log aggregation and later observability work.
 - Logging at boundaries avoids duplicated service/repository logs.
+
+## Day 20 - Module 4.2: Observability
+
+### Goal
+
+Expose basic runtime signals for health and metrics without introducing a production metrics dependency yet.
+
+### Design change
+
+- Added `/health/ready` for dependency readiness.
+- Added `PostgresRepository.Ping(ctx)` for PostgreSQL readiness checks.
+- Added `/metrics` returning a JSON snapshot from an in-process metrics collector.
+- Added mutex protection around metrics state.
+- Added HTTP request counters and duration buckets.
+- Added worker-process counters and gauges while documenting that they are not visible from the separate server process.
+
+### Health flow
+
+```mermaid
+flowchart TD
+    Live[/GET /health/live/] --> LiveResult[200 if process can respond]
+    Ready[/GET /health/ready/] --> Ping[PostgresRepository.Ping]
+    Ping -->|success| ReadyOK[200 ready]
+    Ping -->|failure| ReadyFail[503 DATABASE_NOT_READY]
+```
+
+### Metrics flow
+
+```mermaid
+flowchart TD
+    Request[HTTP request] --> Middleware[requestLoggingMiddleware]
+    Middleware --> Count[http_requests_total counter]
+    Middleware --> Duration[duration bucket observation]
+    Create[POST /v1/jobs success] --> Submitted[jobs_submitted_total counter]
+    Metrics[/GET /metrics/] --> Snapshot[mutex-protected metrics snapshot]
+    Snapshot --> JSON[JSON metrics response]
+```
+
+### Worker metrics limitation
+
+```mermaid
+flowchart LR
+    Serve[serve process] --> MetricsEndpoint[/metrics endpoint/]
+    MetricsEndpoint --> HTTPMetrics[HTTP in-process metrics]
+    Work[work process] --> WorkerMetrics[worker in-process metrics]
+    WorkerMetrics -. not visible to .-> MetricsEndpoint
+```
+
+### Why this matters
+
+- Health endpoints support safe orchestration decisions.
+- Metrics show operational trends that logs alone cannot summarize.
+- Mutex-protected snapshots avoid data races when handlers and goroutines read/write metrics.
+- The separate-process limitation is explicit, preventing misleading assumptions about worker visibility.
