@@ -11,7 +11,8 @@ The project follows `Go_Industry_Roadmap_4_Weeks.md`. Week 3 implementation is c
 - Week 3 worker pool, graceful shutdown, retry handling, and concurrency testing completed through Module 3.6
 - Module 4.1 structured logging completed with JSON `slog` output
 - Module 4.2 observability completed with readiness and JSON metrics
-- Current next step: Module 4.3 profiling and performance
+- Module 4.3 profiling and performance completed with benchmark/profile baseline
+- Current next step: Module 4.4 security
 
 ## Requirements
 
@@ -76,11 +77,7 @@ go vet ./...
 go test ./...
 go test --% -coverprofile=coverage.out ./...
 go test -race ./...
+go test -bench=. -benchmem ./...
 ```
 
-
-
-
-
-
-
+Generated profiling artifacts such as `cpu.out`, `mem.out`, `block.out`, `mutex.out`, and `trace.out` are ignored by Git.

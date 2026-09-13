@@ -1310,3 +1310,65 @@
 ### Next session
 
 - Start Day 21 - Module 4.3 profiling and performance with benchmarks, pprof, and measured optimization.
+
+## 2026-09-13 - Module 4.3 profiling and performance completed
+
+### Topics covered
+
+- Benchmarking with `go test -bench`
+- `-benchmem`, `ns/op`, `B/op`, and `allocs/op`
+- Parallel benchmark interpretation
+- CPU profiling with `go tool pprof`
+- Mutex and block profiling
+- Execution trace generation
+- Memory profiling and allocation interpretation
+- Escape analysis with `-gcflags=-m`
+- PostgreSQL connection-pool limits
+
+### Work completed
+
+- Added metrics snapshot benchmarks.
+- Measured basic and parallel `metrics.snapshot()` performance.
+- Captured and inspected CPU profile output.
+- Captured and inspected memory profile output.
+- Generated mutex profile, block profile, and execution trace artifacts.
+- Reviewed escape-analysis output for metrics-related code.
+- Confirmed current mutex-based metrics snapshot is acceptable for now.
+- Added `cpu.out` and `mem.out` to `.gitignore`.
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/metrics_benchmark_test.go`
+- `go test -bench=BenchmarkMetricsSnapshot -benchmem ./cmd/goflow`
+- `cd ./cmd/goflow`
+- `go test --% -bench=BenchmarkMetricsSnapshotParallel -cpuprofile=cpu.out`
+- `go tool pprof cpu.out`
+- `go tool pprof mem.out`
+- `go test --% -bench=BenchmarkMetricsSnapshotParallel -blockprofile=block.out -mutexprofile=mutex.out -trace=trace.out`
+- `go tool pprof -top mutex.out`
+- `go tool pprof -top block.out`
+- `go test -gcflags=-m ./cmd/goflow 2>&1 | Select-String -Pattern "metrics|snapshot|escapes to heap|moved to heap"`
+
+### Problems encountered
+
+- PowerShell parsed profiling commands incorrectly until `--%` was used for `go test` profile flags.
+- `--%` should not be used with PowerShell pipes or redirection; escape analysis worked with normal PowerShell syntax.
+- CPU, memory, mutex, block, and trace profile files are generated diagnostics and should stay ignored by Git.
+
+### What I understood well
+
+- Optimization should be measurement-first.
+- `0 allocs/op` reduces memory churn and garbage-collector pressure on hot paths.
+- The parallel benchmark showed mutex contention that the basic benchmark did not show.
+- A CPU profile explains where time is spent; a memory profile explains allocation pressure.
+- More PostgreSQL connections can hurt throughput after the database is saturated.
+
+### What needs revision
+
+- Continue practicing `pprof top` interpretation with larger, more realistic workloads.
+- Later compare mutex-based metrics with atomic counters only if measurements justify it.
+
+### Next session
+
+- Start Day 22 - Module 4.4 security with input boundaries, secrets/config handling, dependency checks, and safe operational defaults.
+

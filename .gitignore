@@ -1,1 +1,6 @@
 *.exe
+cpu.out
+mem.out
+block.out
+mutex.out
+trace.out

@@ -749,3 +749,72 @@ flowchart LR
 - Metrics show operational trends that logs alone cannot summarize.
 - Mutex-protected snapshots avoid data races when handlers and goroutines read/write metrics.
 - The separate-process limitation is explicit, preventing misleading assumptions about worker visibility.
+
+## Day 21 - Module 4.3: Profiling and Performance
+
+### Goal
+
+Create a measured performance baseline before changing code, and learn how benchmark, CPU profile, memory profile, and escape-analysis output fit together.
+
+### Design change
+
+- Added benchmark coverage for the metrics snapshot hot path.
+- Profiled the parallel snapshot benchmark to inspect contention.
+- Confirmed `metrics.snapshot()` has `0 allocs/op` in the benchmark.
+- Kept the current mutex-based design because the measured cost is small and no production bottleneck has been proven.
+- Generated CPU, heap, mutex, block, and trace artifacts.
+- Added generated profile artifacts to `.gitignore`.
+
+### Measurement workflow
+
+```mermaid
+flowchart LR
+    HotPath[Choose hot path] --> Benchmark[Run benchmark with benchmem]
+    Benchmark --> CPU[Capture CPU profile]
+    Benchmark --> Memory[Capture memory profile]
+    Benchmark --> Mutex[Capture mutex/block profiles]
+    Benchmark --> Trace[Capture execution trace]
+    CPU --> Bottleneck[Identify real bottleneck]
+    Memory --> Allocations[Identify allocation pressure]
+    Mutex --> Waiting[Identify goroutine waiting]
+    Trace --> Timeline[Inspect runtime timeline]
+    Bottleneck --> Decision[Optimize only if justified]
+    Allocations --> Decision
+    Waiting --> Decision
+    Timeline --> Decision
+```
+
+### Metrics snapshot profile
+
+```mermaid
+flowchart TD
+    MetricsEndpoint[/GET /metrics/] --> Snapshot[metrics.snapshot]
+    Snapshot --> Lock[mutex lock]
+    Lock --> Copy[copy counters into snapshot struct]
+    Copy --> Unlock[mutex unlock]
+    Unlock --> JSON[handler encodes JSON response]
+```
+
+### Profile artifact policy
+
+```mermaid
+flowchart LR
+    Bench[Benchmark run] --> CPUOut[cpu.out]
+    Bench --> MemOut[mem.out]
+    Bench --> MutexOut[mutex.out]
+    Bench --> BlockOut[block.out]
+    Bench --> TraceOut[trace.out]
+    CPUOut --> Gitignore[ignored by git]
+    MemOut --> Gitignore
+    MutexOut --> Gitignore
+    BlockOut --> Gitignore
+    TraceOut --> Gitignore
+```
+
+### Why this matters
+
+- The codebase now has a repeatable performance baseline for one operational hot path.
+- The current metrics snapshot is allocation-free in the benchmark.
+- The parallel benchmark makes lock contention visible without prematurely replacing the simple mutex design.
+- Generated profiling files are local diagnostics, not source artifacts.
+

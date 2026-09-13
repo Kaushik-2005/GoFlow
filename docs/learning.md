@@ -2432,3 +2432,107 @@ Day 20 added observability basics to GoFlow:
 - `/health/ready` should check PostgreSQL because real traffic depends on it.
 - `/metrics` should still return in-memory diagnostics during incidents when possible.
 - Average latency hides slow outliers; p95/p99 or buckets show tail latency better.
+
+### Day 21: Module 4.3 - Profiling and Performance
+
+#### Concept
+
+Profiling and performance work should start with measurement. A benchmark gives a repeatable timing baseline, while CPU and memory profiles show where time and allocation pressure are actually coming from.
+
+#### Why it matters
+
+Without measurements, optimization is guesswork. In production Go systems, an attempted optimization can make code harder to understand while barely improving the real bottleneck. Benchmarks and profiles help decide whether a change is worth making.
+
+#### Mental model
+
+Benchmark first, profile the hot path, identify the bottleneck, change one thing, then benchmark again. Do not optimize because code "looks slow"; optimize because measurement shows it matters.
+
+#### Syntax
+
+```go
+func BenchmarkMetricsSnapshot(b *testing.B) {
+	metrics := newMetrics()
+
+	for i := 0; i < b.N; i++ {
+		_ = metrics.snapshot()
+	}
+}
+```
+
+```powershell
+go test -bench=. -benchmem ./...
+go test --% -bench=BenchmarkMetricsSnapshotParallel -cpuprofile=cpu.out
+go tool pprof cpu.out
+go tool pprof mem.out
+go test --% -bench=BenchmarkMetricsSnapshotParallel -blockprofile=block.out -mutexprofile=mutex.out -trace=trace.out
+go tool pprof -top mutex.out
+go tool pprof -top block.out
+go test -gcflags=-m ./cmd/goflow 2>&1 | Select-String -Pattern "metrics|snapshot|escapes to heap|moved to heap"
+```
+
+#### Idiomatic Go
+
+- Put benchmarks in `_test.go` files.
+- Use `b.N` as the benchmark loop count.
+- Keep setup outside the measured loop unless setup is what you are benchmarking.
+- Use `-benchmem` to see `B/op` and `allocs/op`.
+- Use CPU and memory profiles before changing code.
+- Ignore generated profiling artifacts such as `cpu.out`, `mem.out`, `block.out`, `mutex.out`, and `trace.out`.
+
+#### Python comparison
+
+Python code often starts with wall-clock timing or profiler output from application runs. Go gives first-class benchmark support in the `testing` package, so small hot paths can be measured directly with `go test -bench`.
+
+#### Common mistakes
+
+- Treating one benchmark number as absolute truth instead of a baseline.
+- Optimizing without a realistic hot path.
+- Ignoring allocations because `ns/op` looks fast.
+- Reading profile output without separating application cost from testing/profiling overhead.
+- Assuming more database connections always means better throughput.
+
+#### Project application
+
+GoFlow measured the `/metrics` snapshot hot path:
+
+- Added benchmarks for `metrics.snapshot()` in normal and parallel access patterns.
+- Observed roughly `15.96 ns/op`, `0 B/op`, and `0 allocs/op` for the basic snapshot benchmark.
+- Observed roughly `80.41 ns/op`, `0 B/op`, and `0 allocs/op` for the parallel snapshot benchmark.
+- CPU profile showed synchronization pressure under parallel access, especially `internal/sync.(*Mutex).lockSlow`.
+- Mutex profile showed delay around `sync.(*Mutex).Unlock`, confirming lock contention under synthetic parallel snapshot access.
+- Block profile showed delay around `sync.(*Mutex).Lock`, plus expected testing/runtime waiting.
+- Execution trace was generated with `-trace=trace.out` for future timeline inspection.
+- Memory profile showed `metrics.snapshot` with flat `0` allocation, while most allocation came from benchmark/profiling infrastructure.
+- Escape analysis showed `newMetrics` and mutex lock/unlock calls are inlineable, while some benchmark/test objects escape to the heap.
+- PostgreSQL connection pool limits were reviewed as a throughput-control mechanism, not something to increase blindly.
+
+#### Production implications
+
+- `0 allocs/op` on a hot path reduces heap churn, lowers garbage-collector pressure, and helps latency remain predictable.
+- A parallel benchmark can reveal contention that a single-threaded benchmark hides.
+- Mutex and block profiles help explain where goroutines wait, not just where CPU time is spent.
+- A mutex-protected snapshot is acceptable now because the measured cost is tiny and no production bottleneck has been shown.
+- Database pool settings must match PostgreSQL capacity; setting `SetMaxOpenConns` too high can increase contention and reduce throughput.
+
+#### Interview questions
+
+1. Why should you benchmark before optimizing?
+2. What do `ns/op`, `B/op`, and `allocs/op` mean?
+3. Why can a function be fast in isolation but slower under parallel load?
+4. What does a CPU profile tell you that a benchmark alone does not?
+5. Why can too many database connections hurt throughput?
+
+#### References
+
+- Go diagnostics guide: https://go.dev/doc/diagnostics
+- `testing` benchmarks: https://pkg.go.dev/testing#hdr-Benchmarks
+- `runtime/pprof` package: https://pkg.go.dev/runtime/pprof
+
+#### My questions and corrections
+
+- Lower `ns/op` is good, but higher `allocs/op` can still hurt production through memory and GC pressure.
+- The parallel benchmark is slower mostly because goroutines contend for the metrics mutex.
+- `0 allocs/op` is useful because frequent snapshots do not create heap churn.
+- `go tool pprof` output must be interpreted carefully; not every listed allocation comes from the application code being studied.
+- Increasing PostgreSQL connection limits helps only until the database saturates.
+
