@@ -60,3 +60,16 @@
 - Why: The retry schedule survives restarts, remains inspectable, and lets workers process other jobs instead of blocking.
 - Trade-offs: The repository needs a worker-specific query and the schema gains another operational field.
 - Consequences: Future indexes should include `status` and `available_at` for efficient ready-job polling.
+
+## Decision: Treat unauthenticated API as local/internal only
+
+- Date: 2026-09-14
+- Roadmap module: Module 4.4
+- Status: Accepted
+- Context: GoFlow now exposes state-changing HTTP endpoints such as `POST /v1/jobs` and `DELETE /v1/jobs/{id}`, but it does not yet have authentication or authorization.
+- Options considered: expose the API publicly as-is; add a full auth system immediately; keep the API local/internal until auth is designed and implemented
+- Decision: Treat the current HTTP API as local/internal only and document that it must not be exposed directly to the public internet.
+- Why: The module can harden boundaries without prematurely adding a half-designed auth system.
+- Trade-offs: The API remains unsuitable for public deployment until a future auth layer exists.
+- Consequences: Future deployment work must include authentication, authorization, or an external gateway before public exposure.
+

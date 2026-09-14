@@ -3,10 +3,10 @@
 ## Current Position
 
 - Current week: Week 4
-- Current module: Day 22 - Module 4.4
-- Current topic: Security
-- Current task: Start Day 22 - Module 4.4 security
-- Next milestone: Add security checklist and safer boundaries
+- Current module: Day 23 - Module 4.5
+- Current topic: Containers and configuration
+- Current task: Start Day 23 - Module 4.5 containers and configuration
+- Next milestone: Containerized builds and startup config validation
 - Active blockers: None for current testing work; live PostgreSQL validation completed on 2026-09-02
 
 ## Roadmap Progress
@@ -35,7 +35,7 @@
 | 19 | Module 4.1 | Structured logging | Completed | JSON structured logs in worker and HTTP API boundaries | `gofmt -w ./cmd/goflow/main.go ./cmd/goflow/middleware.go ./cmd/goflow/http.go`; `go vet ./...`; `go test ./...`; runtime validated worker JSON logs, HTTP request logs with matching `request_id`, and `job created` logs with `job_id` and `job_type`; learner explained log levels, text vs JSON handlers, correlation IDs, avoiding payload/secrets, and logging errors once at the boundary | 4 |
 | 20 | Module 4.2 | Observability | Completed | Readiness endpoint plus in-process HTTP and worker metrics | `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/main.go ./cmd/goflow/middleware.go ./cmd/goflow/metrics.go ./cmd/goflow/metrics_test.go ./internal/goflow/postgres_repository.go`; `go test -run TestReadyHandler ./cmd/goflow -v`; `go test -run "TestMetrics|TestObserveHTTPRequestDurationBuckets" ./cmd/goflow -v`; `go vet ./...`; `go test ./...`; runtime validated `/health/ready`, `/metrics`, HTTP request counts, and HTTP duration buckets; learner explained logs, metrics, traces, counters, gauges, histograms, labels, high-cardinality risk, liveness, and readiness | 4 |
 | 21 | Module 4.3 | Profiling and performance | Completed | Measured benchmark/profile baseline for metrics snapshot and reviewed PostgreSQL pool limits | `gofmt -w ./cmd/goflow/metrics_benchmark_test.go`; `go test -bench=BenchmarkMetricsSnapshot -benchmem ./cmd/goflow`; `go test --% -bench=BenchmarkMetricsSnapshotParallel -cpuprofile=cpu.out`; `go tool pprof cpu.out`; `go tool pprof mem.out`; `go test --% -bench=BenchmarkMetricsSnapshotParallel -blockprofile=block.out -mutexprofile=mutex.out -trace=trace.out`; `go tool pprof -top mutex.out`; `go tool pprof -top block.out`; `go test -gcflags=-m ./cmd/goflow 2>&1 \| Select-String -Pattern "metrics\|snapshot\|escapes to heap\|moved to heap"`; `go vet ./...`; `go test ./...`; learner explained measurement-first optimization, benchmark output, mutex contention, heap profile interpretation, mutex/block profile interpretation, execution trace generation, escape analysis, GC pressure, and connection-pool saturation | 4 |
-| 22 | Module 4.4 | Security | Not Started | Security checklist and safer boundaries | — | — |
+| 22 | Module 4.4 | Security | Completed | Security checklist and safer HTTP/API boundaries | `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/main.go ./cmd/goflow/middleware.go`; `go test ./cmd/goflow`; `go vet ./...`; `go test ./...`; `go test -race ./...` attempted in agent environment but blocked by Windows ThreadSanitizer allocation error; `govulncheck ./...`; learner explained allowlist validation, SQL injection prevention, safe external errors, log redaction, Content-Type parsing, timeouts, rate-limiting limits, least-privilege DB access, and secret handling | 4 |
 | 23 | Module 4.5 | Containers and configuration | Not Started | Containerized builds and startup config validation | — | — |
 | 24 | Module 4.6 | CI and engineering workflow | Not Started | CI pipeline and production-ready workflow docs | — | — |
 

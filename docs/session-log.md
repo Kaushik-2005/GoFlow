@@ -1372,3 +1372,62 @@
 
 - Start Day 22 - Module 4.4 security with input boundaries, secrets/config handling, dependency checks, and safe operational defaults.
 
+## 2026-09-14 - Module 4.4 security completed
+
+### Topics covered
+
+- Input allowlist validation
+- SQL injection prevention with placeholders
+- Safe external errors versus internal logs
+- Request body limits and HTTP server timeouts
+- Content-Type media type parsing
+- Dependency vulnerability scanning
+- Rate-limiting design trade-offs
+- Least-privilege database access
+- Secret handling
+- Authentication versus authorization
+
+### Work completed
+
+- Restricted public job creation to `email` and `report`.
+- Added invalid job ID validation for get/delete handlers.
+- Added invalid status filter validation.
+- Fixed JSON `Content-Type` parsing to accept charset parameters and avoid breaking GET requests.
+- Added HTTP server timeouts.
+- Added README security notes for the unauthenticated API and `DATABASE_URL` handling.
+- Ran vulnerability scanning with `govulncheck`.
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/http.go ./cmd/goflow/http_test.go ./cmd/goflow/main.go ./cmd/goflow/middleware.go`
+- `go test ./cmd/goflow`
+- `go vet ./...`
+- `go test ./...`
+- `go test -race ./...` attempted; blocked in agent environment by Windows ThreadSanitizer allocation error
+- `govulncheck ./...`
+
+### Problems encountered
+
+- Adding job ID validation broke older tests that used short IDs like `job-1`; tests were updated to use realistic 16-hex job IDs.
+- The initial status allowlist included `failed`, but GoFlow's actual statuses are `pending`, `running`, `completed`, and `dead_letter`.
+- Hardcoded API keys were corrected as insecure; secrets must come from runtime environment or a secret manager.
+- `go test -race ./...` failed in the agent environment with a Windows ThreadSanitizer allocation error; rerun from the user's local terminal if final race validation is needed.
+
+### What I understood well
+
+- Client-controlled values need allowlist validation.
+- Parameterized SQL prevents user input from changing query structure.
+- Raw database errors should not be returned to clients.
+- Full request bodies and secrets should not be logged.
+- In-memory rate limiting is not sufficient as a global limit across multiple instances.
+
+### What needs revision
+
+- Authentication and authorization will need a real design before the API can be public.
+- Distributed rate limiting remains a future production topic.
+- Least-privilege database roles should be implemented in deployment work.
+
+### Next session
+
+- Start Day 23 - Module 4.5 containers and configuration with environment-based config, Docker builds, and startup validation.
+

@@ -274,25 +274,25 @@ func TestGetJobHandler(t *testing.T) {
 	}{
 		{
 			name: "success",
-			path: "/v1/jobs/job-1",
+			path: "/v1/jobs/job-1111111111111111",
 			store: &fakeAPIStore{job: goflow.Job{
-				ID:     "job-1",
+				ID:     "job-1111111111111111",
 				Type:   "email",
 				Status: goflow.StatusPending,
 			}},
 			wantStatus:   http.StatusOK,
-			wantContains: []string{`"id":"job-1"`, `"type":"email"`},
+			wantContains: []string{`"id":"job-1111111111111111"`, `"type":"email"`},
 		},
 		{
 			name:         "not found",
-			path:         "/v1/jobs/job-999",
+			path:         "/v1/jobs/job-9999999999999999",
 			store:        &fakeAPIStore{err: goflow.ErrJobNotFound},
 			wantStatus:   http.StatusNotFound,
 			wantContains: []string{`"code":"JOB_NOT_FOUND"`},
 		},
 		{
 			name:         "store failure",
-			path:         "/v1/jobs/job-500",
+			path:         "/v1/jobs/job-5005005005005005",
 			store:        &fakeAPIStore{err: context.DeadlineExceeded},
 			wantStatus:   http.StatusInternalServerError,
 			wantContains: []string{`"code":"JOB_GET_FAILED"`},
@@ -303,6 +303,13 @@ func TestGetJobHandler(t *testing.T) {
 			store:        &fakeAPIStore{},
 			wantStatus:   http.StatusBadRequest,
 			wantContains: []string{`"code":"JOB_ID_REQUIRED"`},
+		},
+		{
+			name:         "invalid id",
+			path:         "/v1/jobs/abc",
+			store:        &fakeAPIStore{},
+			wantStatus:   http.StatusBadRequest,
+			wantContains: []string{`"code":"INVALID_JOB_ID"`},
 		},
 	}
 
@@ -330,15 +337,15 @@ func TestDeleteJobHandler(t *testing.T) {
 	}{
 		{
 			name:          "success",
-			path:          "/v1/jobs/job-1",
+			path:          "/v1/jobs/job-1111111111111111",
 			store:         &fakeAPIStore{},
 			wantStatus:    http.StatusNoContent,
-			wantDeleteID:  "job-1",
+			wantDeleteID:  "job-1111111111111111",
 			wantDeleteHit: true,
 		},
 		{
 			name:          "not found",
-			path:          "/v1/jobs/job-999",
+			path:          "/v1/jobs/job-9999999999999999",
 			store:         &fakeAPIStore{err: goflow.ErrJobNotFound},
 			wantStatus:    http.StatusNotFound,
 			wantDeleteHit: false,
@@ -346,7 +353,7 @@ func TestDeleteJobHandler(t *testing.T) {
 		},
 		{
 			name:          "store failure",
-			path:          "/v1/jobs/job-500",
+			path:          "/v1/jobs/job-5005005005005005",
 			store:         &fakeAPIStore{err: context.DeadlineExceeded},
 			wantStatus:    http.StatusInternalServerError,
 			wantDeleteHit: false,
@@ -359,6 +366,14 @@ func TestDeleteJobHandler(t *testing.T) {
 			wantStatus:    http.StatusBadRequest,
 			wantDeleteHit: false,
 			wantContains:  []string{`"code":"JOB_ID_REQUIRED"`},
+		},
+		{
+			name:          "invalid id",
+			path:          "/v1/jobs/abc",
+			store:         &fakeAPIStore{},
+			wantStatus:    http.StatusBadRequest,
+			wantDeleteHit: false,
+			wantContains:  []string{`"code":"INVALID_JOB_ID"`},
 		},
 	}
 
@@ -418,6 +433,14 @@ func TestCreateJobHandler(t *testing.T) {
 			wantStatus:    http.StatusBadRequest,
 			wantCreateHit: false,
 			wantContains:  []string{`"code":"JOB_TYPE_REQUIRED"`},
+		},
+		{
+			name:          "unsupported type",
+			body:          `{"type":"temporary-fail"}`,
+			store:         &fakeAPIStore{},
+			wantStatus:    http.StatusBadRequest,
+			wantCreateHit: false,
+			wantContains:  []string{`"code":"INVALID_JOB_TYPE"`},
 		},
 		{
 			name:          "invalid json",
@@ -481,4 +504,18 @@ func TestCreateJobHandlerIncrementsSubmittedMetric(t *testing.T) {
 	if snapshot.JobsSubmittedTotal != 1 {
 		t.Fatalf("expected jobs_submitted_total 1, got %d", snapshot.JobsSubmittedTotal)
 	}
+}
+
+func TestRequireJSONMiddlewareAcceptsJSONWithCharset(t *testing.T) {
+	api := newAPIHandler(&fakeAPIStore{})
+
+	handler := requireJSONMiddleware(http.HandlerFunc(api.createJobHandler))
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/jobs", strings.NewReader(`{"type":"email"}`))
+	request.Header.Set("Content-Type", "application/json; charset=8")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	assertJSONResponse(t, response, http.StatusCreated, `"type":"email"`)
 }

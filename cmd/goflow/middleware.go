@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"mime"
 	"net/http"
 	"time"
 )
@@ -100,15 +101,20 @@ func requestBodyLimitMiddleware(limit int64) func(http.Handler) http.Handler {
 
 func requireJSONMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.Header.Get("Content-Type") != "application/json" {
-			writeJSONError(
-				w,
-				http.StatusUnsupportedMediaType,
-				"UNSUPPORTED_MEDIA_TYPE",
-				"Content-Type must be application/json",
-			)
-			return
+		if r.Method == http.MethodPost {
+			contentType := r.Header.Get("Content-Type")
+			mediaType, _, err := mime.ParseMediaType(contentType)
+			if err != nil || mediaType != "application/json" {
+				writeJSONError(
+					w,
+					http.StatusUnsupportedMediaType,
+					"UNSUPPORTED_MEDIA_TYPE",
+					"Content-Type must be application/json",
+				)
+				return
+			}
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }

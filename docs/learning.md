@@ -2536,3 +2536,109 @@ GoFlow measured the `/metrics` snapshot hot path:
 - `go tool pprof` output must be interpreted carefully; not every listed allocation comes from the application code being studied.
 - Increasing PostgreSQL connection limits helps only until the database saturates.
 
+### Day 22: Module 4.4 - Security
+
+#### Concept
+
+Security starts at system boundaries. Anything supplied by a client, deployment environment, dependency, database, or external system must be treated deliberately instead of trusted by default.
+
+#### Why it matters
+
+GoFlow accepts HTTP requests, stores data in PostgreSQL, logs operational events, and reads `DATABASE_URL` from the environment. Each of those boundaries can leak information, waste resources, or allow unsafe behavior if validation and operational safeguards are weak.
+
+#### Mental model
+
+Validate at the edge, keep SQL parameterized, return safe errors to clients, log only safe metadata, protect resources with limits and timeouts, keep secrets out of source/logs, and scan dependencies for known vulnerabilities.
+
+#### Syntax
+
+```go
+server := &http.Server{
+	Addr:              ":8080",
+	Handler:           handler,
+	ReadHeaderTimeout: 5 * time.Second,
+	ReadTimeout:       10 * time.Second,
+	WriteTimeout:      10 * time.Second,
+	IdleTimeout:       60 * time.Second,
+}
+```
+
+```go
+mediaType, _, err := mime.ParseMediaType(contentType)
+if err != nil || mediaType != "application/json" {
+	writeJSONError(w, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json")
+	return
+}
+```
+
+```go
+WHERE id = $1
+```
+
+#### Idiomatic Go
+
+- Use allowlists for known domain values such as job type and job status.
+- Return `400 Bad Request` for malformed inputs and `404 Not Found` for valid IDs that do not exist.
+- Use `http.Server` timeouts instead of relying on defaults.
+- Use `mime.ParseMediaType` instead of raw string equality for `Content-Type`.
+- Keep user input separate from SQL structure with placeholders such as `$1`.
+- Return safe external errors and log internal details only at trusted boundaries.
+- Do not log request bodies, payloads, credentials, cookies, or `DATABASE_URL`.
+
+#### Python comparison
+
+Python frameworks often provide middleware, validators, and security helpers through framework conventions. In GoFlow, the security posture is explicit: handlers validate inputs, middleware limits request behavior, `database/sql` uses placeholders, and `http.Server` owns timeout settings.
+
+#### Common mistakes
+
+- Checking only that input is non-empty instead of checking an allowlist.
+- Returning raw database errors to clients.
+- Logging full request bodies for debugging.
+- Hardcoding secrets in source code.
+- Assuming `sslmode=disable` or superuser credentials are acceptable outside local development.
+- Using an in-memory rate limiter as if it were a global limit across multiple instances.
+
+#### Project application
+
+Day 22 hardened GoFlow in these ways:
+
+- `POST /v1/jobs` now accepts only user-facing job types: `email` and `report`.
+- Internal failure simulation types are no longer accepted through the public HTTP create endpoint.
+- `GET /v1/jobs/{id}` and `DELETE /v1/jobs/{id}` now reject malformed job IDs with `400 INVALID_JOB_ID`.
+- `GET /v1/jobs?status=...` now rejects invalid status filters with `400 INVALID_STATUS_FILTER`.
+- `requireJSONMiddleware` now accepts valid media types such as `application/json; charset=utf-8` and only applies JSON enforcement to `POST` requests.
+- The HTTP server now has read-header, read, write, and idle timeouts.
+- `govulncheck ./...` reported no known reachable vulnerabilities.
+- README now documents that the API is local/internal only until authentication and authorization are added.
+
+#### Production implications
+
+- The current API must not be exposed directly to the public internet because it has no authentication or authorization.
+- `DELETE /v1/jobs/{id}` is especially risky without authorization because it changes state destructively.
+- A production database user should follow least privilege rather than using the `postgres` superuser.
+- `DATABASE_URL` should come from the runtime environment or a secret manager, not source code or logs.
+- Rate limiting is still a future design item; a single-process in-memory limiter is not enough for multiple server instances.
+
+#### Interview questions
+
+1. What is the difference between authentication and authorization?
+2. Why should invalid ID format return `400` while a missing valid ID returns `404`?
+3. Why is `WHERE id = $1` safer than building SQL with string concatenation?
+4. Why should HTTP servers set read/write/idle timeouts?
+5. Why should secrets not be committed even to a private repository?
+
+#### References
+
+- Go security best practices: https://go.dev/doc/security/best-practices
+- Go vulnerability management: https://go.dev/doc/security/vuln/
+- `net/http.Server`: https://pkg.go.dev/net/http#Server
+- `mime.ParseMediaType`: https://pkg.go.dev/mime#ParseMediaType
+
+#### My questions and corrections
+
+- Client-controlled job type should use allowlist validation, not only a non-empty check.
+- Parameterized SQL sends query structure and values separately, so malicious input is treated as data.
+- Raw database errors can leak schema or configuration details and should not be returned to clients.
+- Hardcoded secrets remain in Git history even if later removed.
+- In-memory per-IP rate limiting is not global across multiple instances and resets on restart.
+

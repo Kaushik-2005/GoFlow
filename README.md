@@ -12,7 +12,8 @@ The project follows `Go_Industry_Roadmap_4_Weeks.md`. Week 3 implementation is c
 - Module 4.1 structured logging completed with JSON `slog` output
 - Module 4.2 observability completed with readiness and JSON metrics
 - Module 4.3 profiling and performance completed with benchmark/profile baseline
-- Current next step: Module 4.4 security
+- Module 4.4 security completed with stronger input validation, HTTP timeouts, dependency scanning, and security notes
+- Current next step: Module 4.5 containers and configuration
 
 ## Requirements
 
@@ -25,6 +26,16 @@ Example:
 ```powershell
 $env:DATABASE_URL = "postgres://postgres:postgres@localhost:5432/goflow?sslmode=disable"
 ```
+
+
+## Security Notes
+
+- GoFlow currently has no authentication or authorization.
+- Treat the HTTP API as local/internal only.
+- Do not expose it directly to the public internet.
+- Store `DATABASE_URL` in the runtime environment or a secret manager.
+- Do not commit production credentials.
+- The local `DATABASE_URL` example is for development only.
 
 ## Run
 

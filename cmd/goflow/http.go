@@ -137,6 +137,16 @@ func (h *apiHandler) listJobsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	statusFilter := r.URL.Query().Get("status")
+	if statusFilter != "" && !isAllowedJobStatus(statusFilter) {
+		writeJSONError(
+			w,
+			http.StatusBadRequest,
+			"INVALID_STATUS_FILTER",
+			"Status filter is invalid",
+		)
+		return
+	}
+
 	if statusFilter != "" {
 		filtered := make([]goflow.Job, 0, len(jobs))
 		for _, job := range jobs {
@@ -162,6 +172,11 @@ func (h *apiHandler) getJobHandler(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/v1/jobs/")
 	if id == "" {
 		writeJSONError(w, http.StatusBadRequest, "JOB_ID_REQUIRED", "A job ID is required")
+		return
+	}
+
+	if !isValidJobID(id) {
+		writeJSONError(w, http.StatusBadRequest, "INVALID_JOB_ID", "Job ID is invalid")
 		return
 	}
 
@@ -193,6 +208,11 @@ func (h *apiHandler) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !isValidJobID(id) {
+		writeJSONError(w, http.StatusBadRequest, "INVALID_JOB_ID", "Job ID is invalid")
+		return
+	}
+
 	if err := h.store.Delete(r.Context(), id); err != nil {
 		if errors.Is(err, goflow.ErrJobNotFound) {
 			writeJSONError(w, http.StatusNotFound, "JOB_NOT_FOUND", "The requested job does not exist")
@@ -208,6 +228,48 @@ func (h *apiHandler) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 
 type createJobRequest struct {
 	Type string `json:"type"`
+}
+
+func isAllowedJobType(jobType string) bool {
+	switch jobType {
+	case "email", "report":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedJobStatus(status string) bool {
+	switch goflow.JobStatus(status) {
+	case goflow.StatusPending,
+		goflow.StatusRunning,
+		goflow.StatusCompleted,
+		goflow.StatusDeadLetter:
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidJobID(id string) bool {
+	if !strings.HasPrefix(id, "job-") {
+		return false
+	}
+
+	suffix := strings.TrimPrefix(id, "job-")
+	if len(suffix) != 16 {
+		return false
+	}
+
+	for _, char := range suffix {
+		if char < '0' || char > '9' {
+			if char < 'a' || char > 'f' {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 func (h *apiHandler) createJobHandler(w http.ResponseWriter, r *http.Request) {
@@ -240,6 +302,16 @@ func (h *apiHandler) createJobHandler(w http.ResponseWriter, r *http.Request) {
 
 	if req.Type == "" {
 		writeJSONError(w, http.StatusBadRequest, "JOB_TYPE_REQUIRED", "Job type is required")
+		return
+	}
+
+	if !isAllowedJobType(req.Type) {
+		writeJSONError(
+			w,
+			http.StatusBadRequest,
+			"INVALID_JOB_TYPE",
+			"Job type is not supported",
+		)
 		return
 	}
 

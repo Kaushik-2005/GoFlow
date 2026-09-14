@@ -818,3 +818,57 @@ flowchart LR
 - The parallel benchmark makes lock contention visible without prematurely replacing the simple mutex design.
 - Generated profiling files are local diagnostics, not source artifacts.
 
+## Day 22 - Module 4.4: Security
+
+### Goal
+
+Tighten GoFlow's public boundaries without adding a full authentication system yet.
+
+### Design change
+
+- Added allowlist validation for public job creation types.
+- Added job ID format validation before storage lookup/delete.
+- Added status query validation before filtering.
+- Hardened `Content-Type` parsing with `mime.ParseMediaType`.
+- Added HTTP server timeouts.
+- Documented that the API is local/internal until authentication and authorization exist.
+
+### HTTP input validation flow
+
+```mermaid
+flowchart TD
+    Request[HTTP request] --> Method[method routing]
+    Method --> ContentType[POST Content-Type validation]
+    ContentType --> BodyLimit[1 MB body limit]
+    BodyLimit --> Decode[JSON decode]
+    Decode --> Validate[allowlist and format validation]
+    Validate -->|invalid| Error[400/415 safe JSON error]
+    Validate -->|valid| Store[repository call]
+```
+
+### Error handling boundary
+
+```mermaid
+flowchart LR
+    Store[Repository/database error] --> Handler[HTTP handler boundary]
+    Handler --> Client[Safe external error]
+    Handler --> Logs[Internal structured log metadata]
+    Client -. no raw SQL/db details .-> Client
+```
+
+### Auth boundary
+
+```mermaid
+flowchart TD
+    PublicInternet[Public internet] -->|do not expose yet| GoFlowAPI[GoFlow HTTP API]
+    InternalNetwork[Local/internal network] --> GoFlowAPI
+    FutureAuth[Future auth middleware] --> GoFlowAPI
+```
+
+### Why this matters
+
+- Validation distinguishes malformed requests from missing resources.
+- Timeouts and body limits reduce simple denial-of-service risk.
+- Safe errors avoid leaking schema, SQL, or configuration details.
+- The current API surface is explicitly not production-public until auth is added.
+
