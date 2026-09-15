@@ -1,9 +1,16 @@
+.git
+.dist
 *.exe
+coverage.out
 cpu.out
 mem.out
 block.out
 mutex.out
 trace.out
+jobs.json
+Dockerfile
+README.md
+docs
 .env
 .env.*
 !.env.example

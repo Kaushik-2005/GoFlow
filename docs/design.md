@@ -872,3 +872,57 @@ flowchart TD
 - Safe errors avoid leaking schema, SQL, or configuration details.
 - The current API surface is explicitly not production-public until auth is added.
 
+## Day 23 - Module 4.5: Containers and Configuration
+
+### Goal
+
+Make GoFlow runnable through explicit configuration and a reproducible Docker Compose stack.
+
+### Design change
+
+- Added central config loading for `DATABASE_URL`, `HTTP_ADDR`, and `MIGRATION_FILE`.
+- Split schema migration into `goflow migrate`.
+- Added a multi-stage Dockerfile with a distroless non-root runtime.
+- Added Compose services for PostgreSQL, migration, API, and worker.
+- Added `.dockerignore` and `.env.example` for build/config hygiene.
+
+### Configuration flow
+
+```mermaid
+flowchart TD
+    Env[Environment variables] --> Load[loadConfig]
+    Load --> Validate[fail fast if DATABASE_URL missing]
+    Validate --> Main[main command dispatch]
+    Main --> DB[openPostgresStore with cfg]
+    Main --> HTTP[http.Server Addr from cfg.HTTPAddr]
+    Main --> Migration[migratePostgres with cfg.MigrationFile]
+```
+
+### Compose startup flow
+
+```mermaid
+flowchart TD
+    Postgres[postgres service] -->|healthy| Migrate[goflow-migrate]
+    Migrate -->|completed successfully| API[goflow-api serve]
+    Migrate -->|completed successfully| Worker[goflow-worker work]
+    API -->|DATABASE_URL host postgres| Postgres
+    Worker -->|DATABASE_URL host postgres| Postgres
+```
+
+### Docker image flow
+
+```mermaid
+flowchart LR
+    Source[Go source and modules] --> Builder[golang builder image]
+    Builder --> Binary[compiled goflow binary]
+    Binary --> Runtime[distroless non-root runtime]
+    Migrations[migrations directory] --> Runtime
+```
+
+### Why this matters
+
+- Config is explicit, tested, and owned by startup code.
+- Runtime services no longer race to apply migrations.
+- The container image contains only what GoFlow needs to run.
+- Compose validates the real API/worker/PostgreSQL wiring used outside the local terminal.
+

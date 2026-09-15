@@ -13,7 +13,8 @@ The project follows `Go_Industry_Roadmap_4_Weeks.md`. Week 3 implementation is c
 - Module 4.2 observability completed with readiness and JSON metrics
 - Module 4.3 profiling and performance completed with benchmark/profile baseline
 - Module 4.4 security completed with stronger input validation, HTTP timeouts, dependency scanning, and security notes
-- Current next step: Module 4.5 containers and configuration
+- Module 4.5 containers and configuration completed with explicit config, Dockerfile, Compose stack, migration command, and runtime validation
+- Current next step: Module 4.6 CI and engineering workflow
 
 ## Requirements
 
@@ -25,7 +26,11 @@ Example:
 
 ```powershell
 $env:DATABASE_URL = "postgres://postgres:postgres@localhost:5432/goflow?sslmode=disable"
+$env:HTTP_ADDR = ":8080"
+$env:MIGRATION_FILE = "migrations/001_create_jobs.sql"
 ```
+
+Copy `.env.example` when you need a local template, but do not commit real `.env` files.
 
 
 ## Security Notes
@@ -51,6 +56,7 @@ go run ./cmd/goflow process <job-id>
 HTTP server:
 
 ```powershell
+go run ./cmd/goflow migrate
 go run ./cmd/goflow serve
 ```
 
@@ -78,6 +84,46 @@ Current HTTP API:
 - `DELETE /v1/jobs/{id}`
 
 The app automatically applies `migrations/001_create_jobs.sql` during startup.
+
+
+## Docker
+
+Build the image:
+
+```powershell
+docker build -t goflow:dev .
+```
+
+## Docker Compose
+
+Start the full stack:
+
+```powershell
+docker compose config
+docker compose up --build
+```
+
+Validate from another terminal:
+
+```powershell
+curl.exe http://localhost:8080/health/live
+curl.exe http://localhost:8080/health/ready
+curl.exe http://localhost:8080/metrics
+```
+
+Stop containers but keep PostgreSQL data:
+
+```powershell
+docker compose down
+```
+
+Reset containers and delete PostgreSQL data:
+
+```powershell
+docker compose down -v
+```
+
+`goflow-migrate` runs schema setup once before the API and worker start. Inside Compose, GoFlow uses `postgres` as the database hostname because `localhost` would refer to the GoFlow container itself. The API address is configured with `HTTP_ADDR`.
 
 ## Validation
 

@@ -13,15 +13,8 @@ import (
 	_ "github.com/lib/pq"
 )
 
-const migrationFile = "migrations/001_create_jobs.sql"
-
-func openPostgresStore(ctx context.Context) (*goflow.PostgresRepository, *sql.DB, error) {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		return nil, nil, fmt.Errorf("DATABASE_URL is not set")
-	}
-
-	db, err := sql.Open("postgres", databaseURL)
+func openPostgresStore(ctx context.Context, cfg config) (*goflow.PostgresRepository, *sql.DB, error) {
+	db, err := sql.Open("postgres", cfg.DatabaseURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open database: %w", err)
 	}
@@ -35,15 +28,28 @@ func openPostgresStore(ctx context.Context) (*goflow.PostgresRepository, *sql.DB
 		return nil, nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	if err := applyMigrations(ctx, db); err != nil {
-		db.Close()
-		return nil, nil, fmt.Errorf("apply migrations: %w", err)
-	}
-
 	return goflow.NewPostgresRepository(db), db, nil
 }
 
-func applyMigrations(ctx context.Context, db *sql.DB) error {
+func migratePostgres(ctx context.Context, cfg config) error {
+	db, err := sql.Open("postgres", cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer db.Close()
+
+	if err := db.PingContext(ctx); err != nil {
+		return fmt.Errorf("ping database: %w", err)
+	}
+
+	if err := applyMigrations(ctx, db, cfg.MigrationFile); err != nil {
+		return fmt.Errorf("apply migrations: %w", err)
+	}
+
+	return nil
+}
+
+func applyMigrations(ctx context.Context, db *sql.DB, migrationFile string) error {
 	migrationSQL, err := os.ReadFile(migrationFile)
 	if err != nil {
 		return fmt.Errorf("read migration file: %w", err)

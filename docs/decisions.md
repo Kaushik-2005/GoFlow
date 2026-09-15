@@ -73,3 +73,27 @@
 - Trade-offs: The API remains unsuitable for public deployment until a future auth layer exists.
 - Consequences: Future deployment work must include authentication, authorization, or an external gateway before public exposure.
 
+## Decision: Own migrations with a separate command
+
+- Date: 2026-09-15
+- Roadmap module: Module 4.5
+- Status: Accepted
+- Context: Docker Compose starts API and worker as separate processes. When both ran migrations during startup, PostgreSQL hit a concurrent schema creation error.
+- Options considered: let every process run migrations; run migrations manually only; add a dedicated `goflow migrate` command and Compose migration service
+- Decision: Add `goflow migrate` and make API/worker start only after the migration service completes successfully.
+- Why: Schema changes should have one clear owner, and runtime services should focus on serving requests or processing jobs.
+- Trade-offs: Local and Compose startup now have one extra command/service.
+- Consequences: Future deployments should run migrations as a distinct release/deployment step before starting application workloads.
+
+## Decision: Use multi-stage Docker build with distroless runtime
+
+- Date: 2026-09-15
+- Roadmap module: Module 4.5
+- Status: Accepted
+- Context: GoFlow needs a container image for production-style runtime validation.
+- Options considered: ship the full Go toolchain image; use Alpine with shell tools; use a multi-stage build and distroless non-root runtime
+- Decision: Compile in a `golang` builder image and copy only the binary and migrations into a distroless non-root runtime image.
+- Why: This keeps the runtime image smaller and reduces attack surface.
+- Trade-offs: The runtime image has no shell or `curl`, so container-internal health checks need a different strategy.
+- Consequences: Health validation is currently external through Compose/curl; future production health checks should be orchestrator-based or use a small dedicated healthcheck binary.
+

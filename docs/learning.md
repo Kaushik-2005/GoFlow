@@ -2642,3 +2642,106 @@ Day 22 hardened GoFlow in these ways:
 - Hardcoded secrets remain in Git history even if later removed.
 - In-memory per-IP rate limiting is not global across multiple instances and resets on restart.
 
+### Day 23: Module 4.5 - Containers and Configuration
+
+#### Concept
+
+Configuration is runtime data that changes between environments without changing source code. Containers package the application and its runtime files so the same binary can run predictably outside the local development machine.
+
+#### Why it matters
+
+A production service must fail fast on invalid required configuration, expose safe defaults for non-secret operational settings, and run in a reproducible environment. Docker and Compose also make API, worker, PostgreSQL, and migrations easier to run together.
+
+#### Mental model
+
+`main` is the composition boundary: it loads config, validates required settings, wires dependencies, and starts the selected command. Runtime code should receive explicit values instead of reaching into environment variables itself.
+
+#### Syntax
+
+```go
+type config struct {
+	DatabaseURL   string
+	HTTPAddr      string
+	MigrationFile string
+}
+```
+
+```go
+var (
+	version = "dev"
+	commit  = "none"
+)
+```
+
+```powershell
+go build -ldflags "-X main.version=v1.0.0 -X main.commit=abc123" -o goflow.exe ./cmd/goflow
+docker build -t goflow:dev .
+docker compose up --build
+```
+
+#### Idiomatic Go
+
+- Read environment variables once near startup.
+- Fail fast for required secrets or dependency config such as `DATABASE_URL`.
+- Use safe defaults for operational knobs such as `HTTP_ADDR` and `MIGRATION_FILE`.
+- Pass config explicitly into setup functions.
+- Use `-ldflags -X` for simple build metadata.
+- Keep migrations owned by one command/process instead of every runtime process.
+
+#### Python comparison
+
+Python apps often use `.env` loaders or framework settings modules. GoFlow keeps the first version simple and explicit: `loadConfig()` reads the process environment, tests use `t.Setenv`, and command startup passes config into setup code.
+
+#### Common mistakes
+
+- Giving a default `DATABASE_URL` and accidentally connecting to the wrong database.
+- Letting multiple app processes run migrations concurrently.
+- Using `localhost` inside Compose to reach another container.
+- Shipping the Go compiler and source files in the runtime image.
+- Adding `curl` to a production image only for health checks.
+- Committing real `.env` files.
+
+#### Project application
+
+Day 23 added production-style config and container support:
+
+- Added `config.go` and `config_test.go`.
+- Added `DATABASE_URL`, `HTTP_ADDR`, and `MIGRATION_FILE` config loading.
+- Wired config into database setup and server address.
+- Added `version` and `commit` build metadata with `-ldflags` support.
+- Added `goflow migrate` so schema setup has one owner.
+- Added a multi-stage `Dockerfile` using a distroless non-root runtime image.
+- Added `.dockerignore` to reduce Docker build context.
+- Added `docker-compose.yml` with PostgreSQL, migrate, API, and worker services.
+- Added `.env.example` and ignored real `.env` files.
+
+#### Production implications
+
+- API and worker no longer race each other while applying migrations.
+- Compose uses `postgres` as the database hostname because `localhost` inside a container means that same container.
+- `docker compose down` preserves the named PostgreSQL volume; `docker compose down -v` deletes it.
+- Distroless keeps the runtime image small and reduces attack surface, but it does not include shell tools like `curl`.
+- Health checks can be performed externally for now; a future production image can add a dedicated healthcheck binary or rely on the orchestrator.
+
+#### Interview questions
+
+1. Why should required configuration fail fast at startup?
+2. Why should `DATABASE_URL` not have a default value?
+3. Why is a multi-stage Docker build useful for Go services?
+4. Why does Compose use `postgres:5432` instead of `localhost:5432`?
+5. Why should migrations have one owner instead of running from every service process?
+
+#### References
+
+- Go command `build`: https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies
+- Docker multi-stage builds: https://docs.docker.com/build/building/multi-stage/
+- Docker Compose services: https://docs.docker.com/compose/compose-file/05-services/
+
+#### My questions and corrections
+
+- `HTTP_ADDR` should default to `:8080` to match GoFlow's existing behavior.
+- `DATABASE_URL` is required and should not default, because a default could hide missing secrets or connect to the wrong database.
+- A separate `migrate` command avoids API/worker migration races.
+- `localhost` inside a container points to that container, not another service.
+- `docker compose down -v` deletes the named PostgreSQL volume and wipes saved jobs.
+

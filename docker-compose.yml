@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: goflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d goflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  goflow-migrate:
+    build: .
+    image: goflow:dev
+    command: ["migrate"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/goflow?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  goflow-api:
+    build: .
+    image: goflow:dev
+    command: ["serve"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/goflow?sslmode=disable
+      HTTP_ADDR: ":8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      goflow-migrate:
+        condition: service_completed_successfully
+
+  goflow-worker:
+    image: goflow:dev
+    command: ["work"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/goflow?sslmode=disable
+    depends_on:
+      goflow-migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:

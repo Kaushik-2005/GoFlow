@@ -16,6 +16,11 @@ import (
 const jobQueueSize = 8
 const workerCount = 3
 
+var (
+	version = "dev"
+	commit  = "none"
+)
+
 func requireArg(args []string, index int, message string) (string, bool) {
 	if len(args) <= index {
 		fmt.Println(message)
@@ -26,8 +31,18 @@ func requireArg(args []string, index int, message string) (string, bool) {
 
 func printHelp() {
 	fmt.Println("Usage: goflow <command>")
-	fmt.Println("Commands: list, create, get, process, serve, work")
+	fmt.Println("Commands: list, create, get, process, migrate, serve, work")
 	fmt.Println("Environment: DATABASE_URL must point to PostgreSQL")
+	fmt.Printf("Version: %s (%s)\n", version, commit)
+}
+
+func commandNeedsConfig(command string) bool {
+	switch command {
+	case "list", "create", "get", "process", "migrate", "serve", "work":
+		return true
+	default:
+		return false
+	}
 }
 
 func main() {
@@ -38,12 +53,22 @@ func main() {
 
 	command := os.Args[1]
 
+	var cfg config
+	if commandNeedsConfig(command) {
+		loadedConfig, err := loadConfig()
+		if err != nil {
+			fmt.Printf("invalid config: %v\n", err)
+			return
+		}
+		cfg = loadedConfig
+	}
+
 	switch command {
 	case "list":
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		store, db, err := openPostgresStore(ctx)
+		store, db, err := openPostgresStore(ctx, cfg)
 		if err != nil {
 			fmt.Printf("failed to open store: %v\n", err)
 			return
@@ -71,7 +96,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		store, db, err := openPostgresStore(ctx)
+		store, db, err := openPostgresStore(ctx, cfg)
 		if err != nil {
 			fmt.Printf("failed to open store: %v\n", err)
 			return
@@ -112,7 +137,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		store, db, err := openPostgresStore(ctx)
+		store, db, err := openPostgresStore(ctx, cfg)
 		if err != nil {
 			fmt.Printf("failed to open store: %v\n", err)
 			return
@@ -139,7 +164,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		store, db, err := openPostgresStore(ctx)
+		store, db, err := openPostgresStore(ctx, cfg)
 		if err != nil {
 			fmt.Printf("failed to open store: %v\n", err)
 			return
@@ -164,12 +189,22 @@ func main() {
 		}
 
 		fmt.Printf("processing job: %s\n", jobID)
+	case "migrate":
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := migratePostgres(ctx, cfg); err != nil {
+			fmt.Printf("migration failed: %v\n", err)
+			return
+		}
+
+		fmt.Println("migration completed")
 	case "serve":
 		serverCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
 
 		startupCtx, cancel := context.WithTimeout(serverCtx, 5*time.Second)
-		store, db, err := openPostgresStore(startupCtx)
+		store, db, err := openPostgresStore(startupCtx, cfg)
 		cancel()
 
 		if err != nil {
@@ -204,7 +239,7 @@ func main() {
 		)
 
 		server := &http.Server{
-			Addr:              ":8080",
+			Addr:              cfg.HTTPAddr,
 			Handler:           handler,
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       10 * time.Second,
@@ -213,7 +248,7 @@ func main() {
 		}
 
 		go func() {
-			fmt.Println("starting server on :8080")
+			fmt.Printf("starting server on %s\n", cfg.HTTPAddr)
 
 			if err := server.ListenAndServe(); err != nil &&
 				!errors.Is(err, http.ErrServerClosed) {
@@ -245,7 +280,7 @@ func main() {
 		startupCtx, cancel := context.WithTimeout(workCtx, 5*time.Second)
 		defer cancel()
 
-		store, db, err := openPostgresStore(startupCtx)
+		store, db, err := openPostgresStore(startupCtx, cfg)
 		if err != nil {
 			fmt.Printf("failed to open store: %v\n", err)
 			return

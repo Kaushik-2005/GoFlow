@@ -1431,3 +1431,67 @@
 
 - Start Day 23 - Module 4.5 containers and configuration with environment-based config, Docker builds, and startup validation.
 
+## 2026-09-15 - Module 4.5 containers and configuration completed
+
+### Topics covered
+
+- Environment-based configuration
+- Startup validation and safe defaults
+- Build metadata with `-ldflags`
+- Multi-stage Docker builds
+- Distroless non-root runtime images
+- Docker build context hygiene
+- Docker Compose service networking
+- Migration ownership and startup ordering
+- Compose volume lifecycle
+
+### Work completed
+
+- Added central config loading and tests.
+- Wired config into database setup, migration path, and HTTP address.
+- Added build metadata defaults and `-ldflags` override support.
+- Added a `migrate` CLI command.
+- Split migrations out of normal API/worker startup.
+- Added `Dockerfile`, `.dockerignore`, `.env.example`, and `docker-compose.yml`.
+- Updated README with Docker/Compose commands and config notes.
+- Validated the full Compose runtime with API, worker, PostgreSQL, and migrations.
+
+### Commands run
+
+- `gofmt -w ./cmd/goflow/config.go ./cmd/goflow/config_test.go ./cmd/goflow/database.go ./cmd/goflow/main.go`
+- `go test ./cmd/goflow`
+- `go vet ./...`
+- `go test ./...`
+- `go build -ldflags "-X main.version=v1.0.0 -X main.commit=abc123" -o goflow.exe ./cmd/goflow`
+- `docker build -t goflow:dev .`
+- `docker compose config`
+- `docker compose up --build`
+- `curl.exe http://localhost:8080/health/live`
+- `curl.exe http://localhost:8080/health/ready`
+- `curl.exe http://localhost:8080/metrics`
+- `Invoke-RestMethod -Method POST -Uri "http://localhost:8080/v1/jobs" -ContentType "application/json" -Body '{"type":"email"}'`
+- `curl.exe http://localhost:8080/v1/jobs`
+
+### Problems encountered
+
+- The first Compose run exposed a migration race because API and worker both attempted schema setup concurrently.
+- The fix was to add `goflow migrate` and make API/worker depend on successful migration completion.
+- The first Docker build took longer because base images had to be pulled.
+
+### What I understood well
+
+- Required dependency config should fail fast.
+- `HTTP_ADDR` can have a safe default, but `DATABASE_URL` should not.
+- Multi-stage Docker builds keep the runtime image smaller and safer.
+- Compose service names provide DNS between containers.
+- `docker compose down -v` removes named volumes and deletes PostgreSQL data.
+
+### What needs revision
+
+- Container health checks for distroless images need a better production strategy than adding `curl`.
+- Least-privilege database users and secret managers remain production deployment work.
+
+### Next session
+
+- Start Day 24 - Module 4.6 CI and engineering workflow with CI validation commands, build checks, and final project wrap-up.
+
