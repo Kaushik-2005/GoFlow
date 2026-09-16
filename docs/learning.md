@@ -2745,3 +2745,101 @@ Day 23 added production-style config and container support:
 - `localhost` inside a container points to that container, not another service.
 - `docker compose down -v` deletes the named PostgreSQL volume and wipes saved jobs.
 
+
+
+### Day 24: Module 4.6 - CI and Engineering Workflow
+
+#### Concept
+
+CI is an automated quality gate that runs the same validation commands on every push or pull request. Engineering workflow is the repeatable process around formatting, tests, review, build, release notes, and operational documentation.
+
+#### Why it matters
+
+Local validation is useful, but humans forget steps. CI makes the expected standard explicit and repeatable. It protects the main branch from broken formatting, failing tests, suspicious code, known dependency vulnerabilities, broken builds, and invalid container configuration.
+
+#### Mental model
+
+Treat CI as a second developer that checks the project from a clean machine. If a command matters for trust, it should either run in CI or be clearly documented as a manual validation step.
+
+#### Syntax
+
+```yaml
+- name: Test
+  run: go test ./...
+
+- name: Race test
+  run: go test -race ./...
+```
+
+```powershell
+go mod tidy
+go fmt ./...
+go vet ./...
+go test ./...
+govulncheck ./...
+docker build -t goflow:ci .
+docker compose config
+```
+
+#### Idiomatic Go
+
+- Use `go fmt ./...` or `gofmt` as a required formatting gate.
+- Use `go vet ./...` for suspicious-code checks.
+- Use `go test ./...` as the normal package validation gate.
+- Use `go test -race ./...` for concurrency-sensitive code paths.
+- Use `govulncheck ./...` for known reachable vulnerabilities.
+- Keep `go.mod` and `go.sum` tidy and committed.
+- Prefer small PRs with focused commits and reviewable diffs.
+
+#### Python comparison
+
+Python projects often combine linters, formatters, pytest, and dependency scanners. Go has more standard tooling built into the language distribution, so GoFlow's first CI pipeline can rely mostly on `go` commands plus `govulncheck`, Docker, and Compose validation.
+
+#### Common mistakes
+
+- Running checks locally but not enforcing them in CI.
+- Letting `go mod tidy` changes remain uncommitted.
+- Skipping race tests for code that uses goroutines, channels, or mutexes.
+- Treating Docker builds as separate from code validation.
+- Documenting setup only in memory instead of in `README.md`.
+- Adding release tags without a changelog or clear version meaning.
+
+#### Project application
+
+Day 24 completed the engineering workflow around GoFlow:
+
+- Added `.github/workflows/ci.yml`.
+- CI validates module tidiness, formatting, vet, tests, race tests, vulnerability scanning, binary build, Docker build, and Compose config.
+- Updated the PostgreSQL integration test schema so CI can run against a fresh PostgreSQL service container.
+- Expanded README with architecture, configuration, schema, retry semantics, consistency guarantees, testing guide, CI, runbook, known limitations, and future improvements.
+- Added `CHANGELOG.md` for release-note discipline.
+
+#### Production implications
+
+- Main branch should stay deployable because every PR gets a clean validation run.
+- CI's PostgreSQL service catches integration problems that pure unit tests can miss.
+- Docker and Compose checks reduce surprises between local development and runtime packaging.
+- Changelogs and version tags make releases traceable.
+- CI does not replace code review; it catches automatable failures, while review catches design and maintainability issues.
+
+#### Interview questions
+
+1. Why should `go mod tidy` be part of CI?
+2. What does `go test -race ./...` prove and what does it not prove?
+3. Why should CI build the Docker image as well as run Go tests?
+4. What is the difference between a commit, a PR, a tag, and a release note?
+5. Why should production docs include setup, config, runbook, limitations, and future work?
+
+#### References
+
+- Go command documentation: https://pkg.go.dev/cmd/go
+- Go vulnerability management: https://go.dev/doc/security/vuln/
+- GitHub Actions workflow syntax: https://docs.github.com/actions/using-workflows/workflow-syntax-for-github-actions
+- Semantic Versioning: https://semver.org/
+
+#### My questions and corrections
+
+- CI should run from a clean environment, so it catches missing files, dirty module state, and environment assumptions.
+- `sqlmock` is a direct test dependency because test files import it directly.
+- A local Windows `go test -race ./...` failure from ThreadSanitizer allocation is an environment/toolchain problem unless the test output reports an actual data race.
+- Documentation is part of production readiness, not an optional final polish step.

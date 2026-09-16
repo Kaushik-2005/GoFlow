@@ -1495,3 +1495,55 @@
 
 - Start Day 24 - Module 4.6 CI and engineering workflow with CI validation commands, build checks, and final project wrap-up.
 
+
+
+## 2026-09-17 - Module 4.6 CI and engineering workflow completed
+
+### Topics covered
+
+- CI quality gates
+- GitHub Actions workflow design
+- PostgreSQL service containers in CI
+- Module tidiness and formatting checks
+- Vulnerability scanning
+- Docker and Compose validation
+- Release notes and operational documentation
+
+### Work completed
+
+- Added `.github/workflows/ci.yml`.
+- Updated the PostgreSQL integration test schema for fresh CI databases.
+- Expanded README with production-ready architecture, config, schema, retry, consistency, testing, CI, runbook, limitations, and future-work sections.
+- Added `CHANGELOG.md` for release tracking.
+- Completed the final roadmap module implementation.
+
+### Commands run
+
+- `go mod tidy`
+- `go fmt ./...`
+- `go vet ./...`
+- `go test ./...`
+- `go build -ldflags "-X main.version=ci -X main.commit=local" -o goflow.exe ./cmd/goflow`
+- `govulncheck ./...`
+- `docker build --quiet -t goflow:ci .`
+- `docker compose config --quiet`
+- `go test -race ./...`
+
+### Problems encountered
+
+- `go test -race ./...` failed in the agent Windows environment because ThreadSanitizer could not allocate memory. The CI workflow still runs race validation on Ubuntu.
+- `go mod tidy` correctly changed `sqlmock` from indirect to direct because tests import it.
+
+### What I understood well
+
+- CI should run the same checks expected before merging changes.
+- Production documentation should cover setup, configuration, operation, validation, limitations, and future work.
+- Release notes and semantic versioning make project history easier to review.
+
+### What needs revision
+
+- Final roadmap review should revisit weak areas and confirm the project can be explained end-to-end.
+
+### Next session
+
+- Run final roadmap review and prepare the portfolio-ready GoFlow summary.

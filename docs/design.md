@@ -926,3 +926,54 @@ flowchart LR
 - The container image contains only what GoFlow needs to run.
 - Compose validates the real API/worker/PostgreSQL wiring used outside the local terminal.
 
+
+
+## Day 24 - Module 4.6: CI and Engineering Workflow
+
+### Goal
+
+Make the project reviewable and repeatably validatable from a clean environment before changes reach `main`.
+
+### Design change
+
+- Added a GitHub Actions workflow as the main CI gate.
+- Added PostgreSQL as a CI service container so integration tests run against a real database.
+- Added Docker image build and Compose config validation to the same workflow.
+- Expanded README into operational project documentation.
+- Added a changelog for release discipline.
+
+### CI flow
+
+```mermaid
+flowchart TD
+    Push[push or pull request] --> Checkout[checkout source]
+    Checkout --> SetupGo[setup Go from go.mod]
+    SetupGo --> Tidy[go mod tidy + diff check]
+    Tidy --> Format[go fmt + diff check]
+    Format --> Vet[go vet]
+    Vet --> Test[go test with PostgreSQL service]
+    Test --> Race[go test -race]
+    Race --> Vuln[govulncheck]
+    Vuln --> Build[go build with metadata]
+    Build --> Docker[docker build]
+    Docker --> Compose[docker compose config]
+```
+
+### Documentation map
+
+```mermaid
+flowchart LR
+    README[README.md] --> Setup[setup and commands]
+    README --> API[API examples]
+    README --> Ops[runbook]
+    README --> Limits[known limitations]
+    CHANGELOG[CHANGELOG.md] --> Release[release notes]
+    CI[.github/workflows/ci.yml] --> Gates[automated checks]
+```
+
+### Why this matters
+
+- CI turns project quality rules into executable checks.
+- Integration validation catches database and migration assumptions that unit tests can miss.
+- Docker and Compose checks keep deployment packaging from silently drifting.
+- README and changelog make the project understandable to future maintainers and reviewers.

@@ -39,6 +39,8 @@ func TestPostgresRepositoryIntegration(t *testing.T) {
 			status TEXT NOT NULL,
 			attempts INTEGER NOT NULL DEFAULT 0,
 			max_attempts INTEGER NOT NULL DEFAULT 3,
+			available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			last_error TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)

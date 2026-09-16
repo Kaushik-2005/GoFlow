@@ -97,3 +97,16 @@
 - Trade-offs: The runtime image has no shell or `curl`, so container-internal health checks need a different strategy.
 - Consequences: Health validation is currently external through Compose/curl; future production health checks should be orchestrator-based or use a small dedicated healthcheck binary.
 
+
+
+## Decision: Use GitHub Actions as the main CI gate
+
+- Date: 2026-09-17
+- Roadmap module: Module 4.6
+- Status: Accepted
+- Context: GoFlow now has Go code, tests, PostgreSQL integration tests, Docker packaging, and Compose runtime configuration that should be validated before merge.
+- Options considered: rely on manual local commands only; add GitHub Actions CI with PostgreSQL service validation; add a heavier external CI platform
+- Decision: Use GitHub Actions as the primary CI workflow and run Go, security, Docker, and Compose validation there.
+- Why: GitHub Actions fits the repository workflow, supports service containers, and keeps the validation path visible with minimal extra infrastructure.
+- Trade-offs: CI duration increases because it runs integration tests, race tests, vulnerability scanning, and Docker build validation.
+- Consequences: Future changes should keep the workflow green and add new validation steps when new production responsibilities are added.
