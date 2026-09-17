@@ -52,6 +52,19 @@ func (f *fakeWorkerStore) Update(ctx context.Context, job goflow.Job) error {
 	return nil
 }
 
+func (f *fakeWorkerStore) ClaimPending(ctx context.Context, id string) (bool, error) {
+	job, exists := f.jobs[id]
+	if !exists {
+		return false, nil
+	}
+	if job.Status != goflow.StatusPending {
+		return false, nil
+	}
+	job.Status = goflow.StatusRunning
+	f.jobs[id] = job
+	return true, nil
+}
+
 func (f *fakeWorkerStore) Delete(ctx context.Context, id string) error {
 	if _, exists := f.jobs[id]; !exists {
 		return goflow.ErrJobNotFound

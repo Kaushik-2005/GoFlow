@@ -136,6 +136,27 @@ func (r *PostgresRepository) ListReadyJobs(ctx context.Context) ([]Job, error) {
 	return jobs, nil
 }
 
+func (r *PostgresRepository) ClaimPending(ctx context.Context, id string) (bool, error) {
+	const query = `
+		UPDATE jobs
+		SET status = $2, updated_at = NOW()
+		WHERE id = $1
+		AND status = $3
+	`
+
+	result, err := r.db.ExecContext(ctx, query, id, StatusRunning, StatusPending)
+	if err != nil {
+		return false, fmt.Errorf("claim pending job %q: %w", id, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("claim pending job %q: %w", id, err)
+	}
+
+	return rowsAffected == 1, nil
+}
+
 func (r *PostgresRepository) Update(ctx context.Context, job Job) error {
 	const query = `
 		UPDATE jobs

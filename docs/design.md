@@ -977,3 +977,36 @@ flowchart LR
 - Integration validation catches database and migration assumptions that unit tests can miss.
 - Docker and Compose checks keep deployment packaging from silently drifting.
 - README and changelog make the project understandable to future maintainers and reviewers.
+
+
+## Final Review Update: Atomic Job Claim
+
+### Goal
+
+Close the duplicate-ownership gap found during the final roadmap review.
+
+### Design change
+
+- `PostgresRepository` now exposes `ClaimPending(ctx, id)`.
+- The claim is a single conditional SQL update: only `pending` jobs can become `running`.
+- `StartJob` delegates the ownership transition to the repository instead of doing `Get -> Update` itself.
+- If the claim fails, the service reloads the job only to translate the result into a domain error such as not found or invalid status.
+
+### Flow
+
+```mermaid
+flowchart TD
+    Worker[Worker receives job ID] --> Service[StartJob]
+    Service --> Claim[ClaimPending]
+    Claim --> SQL[UPDATE jobs SET status = running WHERE id = id AND status = pending]
+    SQL -->|1 row| Own[worker owns job]
+    SQL -->|0 rows| Inspect[Get job for error translation]
+    Inspect --> NotFound[ErrJobNotFound]
+    Inspect --> Invalid[InvalidJobStatusError]
+```
+
+### Why this matters
+
+- The database now arbitrates job ownership atomically.
+- The in-process `queued` map remains useful for reducing duplicate enqueueing inside one worker process, but it is no longer the main correctness boundary.
+- Idempotency remains necessary because external side effects and database completion are still not one atomic transaction.

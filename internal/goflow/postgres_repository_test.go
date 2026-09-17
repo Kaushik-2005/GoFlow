@@ -207,6 +207,76 @@ func TestPostgresRepositoryList(t *testing.T) {
 	}
 }
 
+func TestPostgresRepositoryClaimPending(t *testing.T) {
+	tests := []struct {
+		name        string
+		id          string
+		setupMock   func(sqlmock.Sqlmock)
+		wantClaimed bool
+		wantErr     bool
+	}{
+		{
+			name: "success",
+			id:   "job-1",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectExec(regexp.QuoteMeta(`
+		UPDATE jobs
+		SET status = $2, updated_at = NOW()
+		WHERE id = $1
+		AND status = $3
+	`)).WithArgs("job-1", StatusRunning, StatusPending).WillReturnResult(sqlmock.NewResult(0, 1))
+			},
+			wantClaimed: true,
+		},
+		{
+			name: "not pending",
+			id:   "job-1",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectExec(regexp.QuoteMeta(`
+		UPDATE jobs
+		SET status = $2, updated_at = NOW()
+		WHERE id = $1
+		AND status = $3
+	`)).WithArgs("job-1", StatusRunning, StatusPending).WillReturnResult(sqlmock.NewResult(0, 0))
+			},
+		},
+		{
+			name: "exec failure",
+			id:   "job-1",
+			setupMock: func(mock sqlmock.Sqlmock) {
+				mock.ExpectExec(regexp.QuoteMeta(`
+		UPDATE jobs
+		SET status = $2, updated_at = NOW()
+		WHERE id = $1
+		AND status = $3
+	`)).WithArgs("job-1", StatusRunning, StatusPending).WillReturnError(sql.ErrConnDone)
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, mock := newMockRepository(t)
+			tt.setupMock(mock)
+
+			claimed, err := repo.ClaimPending(context.Background(), tt.id)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected ClaimPending() to return an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ClaimPending() returned error: %v", err)
+			}
+			if claimed != tt.wantClaimed {
+				t.Fatalf("expected claimed %v, got %v", tt.wantClaimed, claimed)
+			}
+		})
+	}
+}
+
 func TestPostgresRepositoryUpdate(t *testing.T) {
 	tests := []struct {
 		name      string

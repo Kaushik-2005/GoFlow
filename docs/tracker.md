@@ -5,8 +5,8 @@
 - Current week: Week 4
 - Current module: Roadmap complete after Day 24 - Module 4.6
 - Current topic: Final review and portfolio polish
-- Current task: Run final roadmap review and prepare portfolio summary
-- Next milestone: Final review, weak-area revision, and optional portfolio polish
+- Current task: Final review in progress - atomic job claim correction completed
+- Next milestone: Finish portfolio summary and final weak-area review
 - Active blockers: None for current testing work; live PostgreSQL validation completed on 2026-09-02
 
 ## Roadmap Progress
@@ -150,3 +150,14 @@
 - Decisions made: keep the current file-backed app flow temporarily while introducing the DB repository boundary behind `database/sql`
 - Topics to revisit: mapping unique-constraint errors to `ErrJobAlreadyExists`; switching the app startup path from `LoadStore(...)` to a real database handle
 - Next action: wire a real `*sql.DB` into startup, verify connectivity with `PingContext`, and route operations through the repository
+
+
+## Final Review Corrections
+
+### 2026-09-18 - Atomic job claim
+
+- Issue found: `StartJob` previously used `Get -> status check -> Update`, which was not a database-level atomic claim.
+- Correction made: added `ClaimPending(ctx, id)` to the repository boundary and implemented it in PostgreSQL with `UPDATE ... WHERE id = $1 AND status = 'pending'`.
+- Tests added: service tests now verify claim behavior; repository tests verify claimed, not-claimed, and SQL failure paths.
+- Validation: `gofmt`; `go vet ./...`; `go test ./...`.
+- Remaining risk: idempotent execution is still required because external side effects and database completion updates are not one atomic operation.

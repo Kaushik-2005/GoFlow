@@ -1547,3 +1547,48 @@
 ### Next session
 
 - Run final roadmap review and prepare the portfolio-ready GoFlow summary.
+
+
+## 2026-09-18 - Final review atomic claim correction
+
+### Topics covered
+
+- End-to-end GoFlow review
+- Atomic database claims
+- Service versus repository responsibility split
+- Duplicate-processing risk and idempotency
+
+### Work completed
+
+- Reviewed final conceptual answers.
+- Identified that the current `StartJob` path was read-then-write instead of atomic.
+- Added `ClaimPending(ctx, id)` to the job store boundary.
+- Implemented PostgreSQL atomic claim with conditional `UPDATE`.
+- Updated service logic, repository tests, worker test fake, and HTTP test fake.
+
+### Commands run
+
+- `gofmt -w ./internal/goflow/service.go ./internal/goflow/service_test.go ./internal/goflow/postgres_repository.go ./internal/goflow/postgres_repository_test.go ./cmd/goflow/worker_test.go ./cmd/goflow/http_test.go`
+- `go test ./internal/goflow/ -run "TestStartJob|TestPostgresRepositoryClaimPending" -v`
+- `go test ./cmd/goflow/ -run TestProcessQueuedJob -v`
+- `go vet ./...`
+- `go test ./...`
+
+### Problems encountered
+
+- Adding `ClaimPending` to `JobStore` required all test fakes to implement the new method.
+- The focused `cmd/goflow` worker test initially failed to compile until the HTTP test fake also satisfied `JobStore`.
+
+### What I understood well
+
+- The repository should own atomic SQL behavior.
+- The service should own the business operation and error translation.
+- Atomic claiming reduces duplicate worker ownership, but idempotent execution is still required.
+
+### What needs revision
+
+- Continue final review with portfolio explanation and remaining weak areas.
+
+### Next session
+
+- Prepare the final portfolio-ready GoFlow project summary and review remaining known limitations.

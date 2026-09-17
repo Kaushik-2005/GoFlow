@@ -15,6 +15,7 @@ type JobStore interface {
 	List(ctx context.Context) ([]Job, error)
 	Update(ctx context.Context, job Job) error
 	Delete(ctx context.Context, id string) error
+	ClaimPending(ctx context.Context, id string) (bool, error)
 }
 
 type JobExecutionError struct {
@@ -27,25 +28,23 @@ func (e JobExecutionError) Error() string {
 }
 
 func StartJob(ctx context.Context, store JobStore, id string) error {
+	claimed, err := store.ClaimPending(ctx, id)
+	if err != nil {
+		return fmt.Errorf("start job %q: %w", id, err)
+	}
+	if claimed {
+		return nil
+	}
+
 	job, err := store.Get(ctx, id)
 	if err != nil {
 		return fmt.Errorf("start job %q: %w", id, err)
 	}
 
-	if job.Status != StatusPending {
-		return InvalidJobStatusError{
-			JobID:  job.ID,
-			Status: job.Status,
-		}
+	return InvalidJobStatusError{
+		JobID:  job.ID,
+		Status: job.Status,
 	}
-
-	job.MarkRunning()
-
-	if err := store.Update(ctx, job); err != nil {
-		return fmt.Errorf("start job %q: %w", id, err)
-	}
-
-	return nil
 }
 
 func CompleteJob(ctx context.Context, store JobStore, id string) error {

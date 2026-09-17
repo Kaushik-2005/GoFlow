@@ -110,3 +110,16 @@
 - Why: GitHub Actions fits the repository workflow, supports service containers, and keeps the validation path visible with minimal extra infrastructure.
 - Trade-offs: CI duration increases because it runs integration tests, race tests, vulnerability scanning, and Docker build validation.
 - Consequences: Future changes should keep the workflow green and add new validation steps when new production responsibilities are added.
+
+
+## Decision: Claim jobs with a conditional database update
+
+- Date: 2026-09-18
+- Roadmap module: Final review after Module 4.6
+- Status: Accepted
+- Context: Final review found that `StartJob` used a read-then-write sequence, which could allow two workers to observe the same pending job before either update completed.
+- Options considered: keep service-level `Get` plus `Update`; protect only with the in-process queued map; add a repository-level conditional update claim
+- Decision: Add `ClaimPending(ctx, id)` and implement the claim as `UPDATE jobs SET status = 'running' WHERE id = $1 AND status = 'pending'`.
+- Why: PostgreSQL can enforce the ownership transition atomically, including across multiple worker processes.
+- Trade-offs: The store interface gained one persistence-specific capability and test fakes need to implement it.
+- Consequences: Workers now rely on a real database claim before execution, while job executors still need idempotency for crash-after-side-effect cases.

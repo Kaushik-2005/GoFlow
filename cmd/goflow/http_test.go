@@ -50,6 +50,13 @@ func (f *fakeAPIStore) Update(ctx context.Context, job goflow.Job) error {
 	return nil
 }
 
+func (f *fakeAPIStore) ClaimPending(ctx context.Context, id string) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	return true, nil
+}
+
 func (f *fakeAPIStore) Ping(ctx context.Context) error {
 	return f.pingErr
 }

@@ -8,12 +8,15 @@ import (
 )
 
 type fakeJobStore struct {
-	jobs      map[string]Job
-	job       Job
-	getErr    error
-	updateErr error
-	updated   Job
-	updateHit bool
+	jobs        map[string]Job
+	job         Job
+	getErr      error
+	updateErr   error
+	claimErr    error
+	claimResult bool
+	claimHit    bool
+	updated     Job
+	updateHit   bool
 }
 
 func (f *fakeJobStore) Get(ctx context.Context, id string) (Job, error) {
@@ -33,6 +36,14 @@ func (f *fakeJobStore) Update(ctx context.Context, job Job) error {
 		return f.updateErr
 	}
 	return nil
+}
+
+func (f *fakeJobStore) ClaimPending(ctx context.Context, id string) (bool, error) {
+	f.claimHit = true
+	if f.claimErr != nil {
+		return false, f.claimErr
+	}
+	return f.claimResult, nil
 }
 
 func (f *fakeJobStore) Create(ctx context.Context, job Job) error {
@@ -63,11 +74,8 @@ func (f *fakeJobStore) Delete(ctx context.Context, id string) error {
 
 func TestStartJobSuccess(t *testing.T) {
 	store := &fakeJobStore{
-		jobs: make(map[string]Job),
-		job: Job{
-			ID:     "job-1",
-			Status: StatusPending,
-		},
+		jobs:        make(map[string]Job),
+		claimResult: true,
 	}
 
 	err := StartJob(context.Background(), store, "job-1")
@@ -75,12 +83,11 @@ func TestStartJobSuccess(t *testing.T) {
 		t.Fatalf("StartJob() returned error: %v", err)
 	}
 
-	if !store.updateHit {
-		t.Fatal("expected store.Update() to be called")
+	if !store.claimHit {
+		t.Fatal("expected store.ClaimPending() to be called")
 	}
-
-	if store.updated.Status != StatusRunning {
-		t.Errorf("expected status %q, got %q", StatusRunning, store.updated.Status)
+	if store.updateHit {
+		t.Fatal("expected store.Update() not to be called")
 	}
 }
 
@@ -98,6 +105,9 @@ func TestStartJobInvalidStatus(t *testing.T) {
 		t.Fatal("expected StartJob() to return an error")
 	}
 
+	if !store.claimHit {
+		t.Fatal("expected store.ClaimPending() to be called")
+	}
 	if store.updateHit {
 		t.Fatal("expected store.Update() not to be called")
 	}
@@ -132,14 +142,10 @@ func TestStartJobNotFound(t *testing.T) {
 	}
 }
 
-func TestStartJobUpdateFailure(t *testing.T) {
+func TestStartJobClaimFailure(t *testing.T) {
 	store := &fakeJobStore{
-		jobs: make(map[string]Job),
-		job: Job{
-			ID:     "job-3",
-			Status: StatusPending,
-		},
-		updateErr: ErrJobNotFound,
+		jobs:     make(map[string]Job),
+		claimErr: ErrJobNotFound,
 	}
 
 	err := StartJob(context.Background(), store, "job-3")
@@ -147,8 +153,11 @@ func TestStartJobUpdateFailure(t *testing.T) {
 		t.Fatalf("expected ErrJobNotFound, got %v", err)
 	}
 
-	if !store.updateHit {
-		t.Fatal("expected store.Update() to be called")
+	if !store.claimHit {
+		t.Fatal("expected store.ClaimPending() to be called")
+	}
+	if store.updateHit {
+		t.Fatal("expected store.Update() not to be called")
 	}
 }
 
