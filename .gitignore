@@ -7,3 +7,8 @@ trace.out
 .env
 .env.*
 !.env.example
+
+# Keep only production-facing Markdown docs in Git.
+*.md
+!README.md
+!docs/design.md
