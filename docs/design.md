@@ -1,555 +1,317 @@
-# GoFlow Design
+# GoFlow System Design
 
-## Purpose
+GoFlow is an asynchronous job-processing service written in Go. It accepts jobs through an HTTP API or CLI, stores job state in PostgreSQL, and processes ready jobs through a bounded worker pool. The design prioritizes clear boundaries, explicit failure handling, safe shutdown, and operational visibility while keeping the implementation understandable and dependency-light.
 
-This document records how GoFlow's design evolved across the roadmap. It is organized day by day so changes in architecture, boundaries, and trade-offs stay easy to review.
+## Design Goals
 
-## Design Principles
+- Provide a small but production-shaped job-processing backend.
+- Keep the runtime model explicit: API submits jobs, PostgreSQL stores state, workers process jobs.
+- Use Go standard-library primitives where they are sufficient.
+- Keep HTTP, service, worker, and persistence responsibilities separate.
+- Make job ownership safe with an atomic database claim.
+- Preserve enough operational data to inspect failures, retries, and dead-letter jobs.
+- Support local and containerized execution with the same binary.
+- Keep deployment validation repeatable through tests, Docker, Compose, and CI.
 
-- Keep external behavior simple while the internal architecture is still being learned.
-- Separate transport, business rules, persistence, and cross-cutting reliability concerns.
-- Prefer the standard library first so the Go model stays visible.
-- Keep interfaces small and define them where they are consumed.
-- Add reliability protections at the HTTP boundary instead of duplicating them in handlers.
-- Accept temporary learning-stage shortcuts only when they are clearly documented and easy to replace.
+## Non-Goals
 
-## Current Architecture Snapshot
+- Exactly-once external side effects.
+- Public internet exposure without authentication and authorization.
+- Distributed metrics aggregation.
+- A full message broker replacement.
+- Complex multi-service deployment.
+- Framework-driven routing or dependency injection.
 
-### Layer Summary
-
-- CLI layer: command dispatch in `cmd/goflow/main.go`.
-- HTTP transport layer: handlers in `cmd/goflow/http.go`.
-- Middleware layer: request IDs, panic recovery, request body limits, and content-type enforcement in `cmd/goflow/middleware.go`.
-- Core domain layer: `Job`, `JobStatus`, store logic, persistence helpers, service orchestration, and repository contracts in `internal/goflow`.
-- Persistence layer: PostgreSQL-backed repository access through `database/sql` plus the initial SQL migration; `jobs.json` is now legacy learning-stage data rather than the active runtime store.
-
-### Current High-Level Diagram
+## System Overview
 
 ```mermaid
 flowchart TD
-    CLI[CLI in cmd/goflow] --> Core[internal/goflow]
-    HTTP[HTTP handlers in cmd/goflow] --> Core
-    Middleware[Middleware] --> HTTP
-    Core --> Repo[PostgresRepository]
+    Client[HTTP Client] --> API[GoFlow API]
+    CLI[CLI User] --> Commands[CLI Commands]
+    API --> Middleware[HTTP Middleware]
+    Middleware --> Handlers[HTTP Handlers]
+    Handlers --> Store[JobStore Boundary]
+    Commands --> Store
+    Worker[Worker Pool] --> Store
+    Store --> Repo[PostgresRepository]
+    Repo --> DB[(PostgreSQL)]
+    Migrate[Migrate Command] --> DB
+```
+
+GoFlow is built as one binary with several commands. The `serve` command runs the API, the `work` command runs the worker pool, and the `migrate` command owns schema setup. CLI commands reuse the same storage boundary for direct local operations.
+
+## Runtime Commands
+
+| Command | Responsibility |
+|---|---|
+| `serve` | Starts the HTTP API, middleware chain, health endpoints, metrics endpoint, and graceful HTTP shutdown. |
+| `work` | Starts the poller, bounded queue, worker pool, job execution flow, retry handling, and graceful worker shutdown. |
+| `migrate` | Applies the SQL migration file to PostgreSQL. |
+| `create <type>` | Creates a job from the terminal. |
+| `list` | Lists persisted jobs. |
+| `get <job-id>` | Reads a single persisted job. |
+| `process <job-id>` | Manually claims a job as running. |
+
+## Package And File Responsibilities
+
+```mermaid
+flowchart TD
+    Main[cmd/goflow/main.go] --> Config[config.go]
+    Main --> DBSetup[database.go]
+    Main --> HTTP[http.go]
+    Main --> Worker[worker.go]
+    HTTP --> Middleware[middleware.go]
+    HTTP --> Metrics[metrics.go]
+    Main --> Core[internal/goflow]
+    HTTP --> Core
+    Worker --> Core
+    Core --> Repo[postgres_repository.go]
     Repo --> DB[(PostgreSQL)]
 ```
 
-## Day 1 - Module 1.1: Executable Entry Point
+### Executable Layer: `cmd/goflow`
 
-### Design impact
+| File | Design Role |
+|---|---|
+| `main.go` | Process entry point, command dispatch, dependency construction, signal handling, HTTP server lifecycle, worker lifecycle. |
+| `config.go` | Reads environment variables once and provides validated runtime configuration. |
+| `database.go` | Opens PostgreSQL, configures the repository, applies migrations, and generates job IDs. |
+| `http.go` | Translates HTTP requests into store operations and translates results/errors into JSON responses. |
+| `middleware.go` | Adds request IDs, request logging, panic recovery, request body limits, and JSON content-type enforcement. |
+| `metrics.go` | Maintains in-process counters, gauges, and duration buckets behind a mutex. |
+| `worker.go` | Owns single-job execution behavior and maps executor results into completion, retry, or dead-letter transitions. |
 
-- Started with one executable under `cmd/goflow`.
-- Kept the app intentionally flat to focus on packages, modules, and the Go toolchain.
+### Core Layer: `internal/goflow`
 
-### Diagram
+| File | Design Role |
+|---|---|
+| `store.go` | Defines `Job`, `JobStatus`, sentinel errors, and a legacy in-memory store implementation. |
+| `job.go` | Contains domain behavior and typed domain errors such as invalid status transitions. |
+| `service.go` | Owns business transitions: start/claim, complete, fail, retry, and dead-letter. |
+| `postgres_repository.go` | Implements persistence with `database/sql`, parameterized SQL, scanning, and atomic claim behavior. |
+
+## Dependency Direction
+
+The dependency direction is intentionally one-way:
 
 ```mermaid
-flowchart TD
-    User[Terminal user] --> Main[cmd/goflow/main.go]
-    Main --> Output[CLI output]
+flowchart LR
+    Runtime[cmd/goflow] --> Core[internal/goflow]
+    Core --> PostgreSQL[(PostgreSQL via database/sql)]
 ```
 
-## Day 2 - Module 1.2: Language Practice in `main.go`
+The runtime layer knows how to serve HTTP, run workers, log events, load config, and handle process shutdown. The core layer knows job state and persistence behavior. The core layer does not import HTTP or CLI code.
 
-### Design impact
+## HTTP API Design
 
-- Kept small practice helpers local to `main.go`.
-- Deferred package separation until responsibilities became real.
+The HTTP layer uses `net/http` and `http.ServeMux`. Handlers are grouped by endpoint shape:
 
-### Diagram
+| Endpoint | Handler Responsibility |
+|---|---|
+| `GET /health/live` | Confirms the process can respond. |
+| `GET /health/ready` | Confirms PostgreSQL is reachable. |
+| `GET /metrics` | Returns an in-process metrics snapshot. |
+| `GET /v1/jobs` | Lists jobs, optionally filtered by status. |
+| `POST /v1/jobs` | Validates request JSON and creates a pending job. |
+| `GET /v1/jobs/{id}` | Validates job ID and returns one job. |
+| `DELETE /v1/jobs/{id}` | Validates job ID and deletes one job. |
+
+### HTTP Request Flow
 
 ```mermaid
-flowchart TD
-    Main[main.go] --> Helpers[Practice helpers]
-    Helpers --> Output[Printed results]
+sequenceDiagram
+    participant Client
+    participant Middleware
+    participant Handler
+    participant Store as JobStore
+    participant DB as PostgreSQL
+
+    Client->>Middleware: HTTP request
+    Middleware->>Middleware: assign request_id, limit body, recover panics, log completion
+    Middleware->>Handler: validated request context
+    Handler->>Handler: decode and validate input
+    Handler->>Store: context-aware operation
+    Store->>DB: parameterized SQL
+    DB-->>Store: rows/result/error
+    Store-->>Handler: job/error
+    Handler-->>Client: JSON response
 ```
 
-## Day 3 - Module 1.3: In-Memory Store
+### API Error Model
 
-### Design impact
+HTTP errors use a consistent envelope:
 
-- Introduced `Job`, `JobStatus`, and `Store`.
-- Established the first reusable domain and storage boundary.
-
-### Diagram
-
-```mermaid
-flowchart TD
-    CLI[CLI command] --> Store[Store]
-    Store --> JobsMap[(map[string]Job)]
-    Store --> ListSlice[[[]Job]]
+```json
+{
+  "error": {
+    "code": "JOB_NOT_FOUND",
+    "message": "The requested job does not exist"
+  }
+}
 ```
 
-## Day 4 - Module 1.4: Job Behavior and Small Interfaces
+The HTTP status code communicates protocol-level meaning. The JSON error code communicates application-level meaning. Internal database errors are not exposed directly to clients.
 
-### Design impact
+## Middleware Design
 
-- Moved behavior onto `Job` with methods like `CanRetry()` and `MarkRunning()`.
-- Added orchestration with a small consumer-defined interface.
-
-### Diagram
+Middleware wraps the mux in a fixed order:
 
 ```mermaid
-flowchart TD
-    CLI[CLI process command] --> Service[Start job logic]
-    Service --> JobMethods[Job methods]
-    Service --> StoreInterface[Small interface]
-    StoreInterface --> StoreImpl[Store]
-```
-
-## Day 5 - Module 1.5: Explicit Error Model
-
-### Design impact
-
-- Replaced boolean-style failures with explicit errors.
-- Added sentinel errors and a custom typed error for invalid state transitions.
-
-### Diagram
-
-```mermaid
-flowchart TD
-    Store[Store methods] --> Sentinel[Sentinel errors]
-    Service[Service layer] --> Wrapped[Wrapped errors]
-    CLI[CLI boundary] --> Inspect[errors.Is / errors.As]
-```
-
-## Day 6 - Module 1.6: JSON File Persistence
-
-### Design impact
-
-- Added `saveJobs(...)`, `loadJobs(...)`, `Store.Save(...)`, and `LoadStore(...)`.
-- Moved from ephemeral CLI behavior to persisted local state in `jobs.json`.
-
-### Diagram
-
-```mermaid
-flowchart TD
-    CLI[CLI command] --> Core[Store]
-    Core --> Persistence[persistence helpers]
-    Persistence --> JSON[(jobs.json)]
-```
-
-## Day 7 - Module 2.1: First HTTP API
-
-### Design impact
-
-- Added the first `net/http` transport layer.
-- Reused the same job model and store behavior across CLI and HTTP.
-
-### Diagram
-
-```mermaid
-flowchart TD
-    Client[HTTP client] --> Server[http.Server]
-    Server --> Mux[ServeMux]
-    Mux --> Handlers[HTTP handlers]
-    Handlers --> Core[Store / service]
-    Core --> JSON[(jobs.json)]
-```
-
-## Day 8 - Module 2.2: Middleware and Reliability Guards
-
-### Design impact
-
-- Added a distinct middleware layer.
-- Centralized request IDs, recovery, body limits, and JSON content-type enforcement.
-
-### Diagram
-
-```mermaid
-flowchart TD
-    Client[HTTP client] --> ReqID[requestIDMiddleware]
-    ReqID --> Recovery[recoveryMiddleware]
-    Recovery --> Limit[requestBodyLimitMiddleware]
-    Limit --> JSON[requireJSONMiddleware]
+flowchart LR
+    Request[Request] --> RequestID[requestIDMiddleware]
+    RequestID --> Logging[requestLoggingMiddleware]
+    Logging --> Recovery[recoveryMiddleware]
+    Recovery --> BodyLimit[requestBodyLimitMiddleware]
+    BodyLimit --> JSON[requireJSONMiddleware]
     JSON --> Mux[ServeMux]
-    Mux --> Handler[HTTP handler]
 ```
 
-## Day 9 - Module 2.3: Core Package Extraction
+| Middleware | Purpose |
+|---|---|
+| Request ID | Adds a unique request identifier to the context and response header. |
+| Request logging | Logs method, path, status, request ID, and duration. |
+| Recovery | Converts panics into controlled `500` JSON errors. |
+| Body limit | Caps request bodies at 1 MB. |
+| JSON content type | Requires JSON content type for `POST` requests. |
 
-### Design impact
+## Data Model
 
-- Extracted reusable application logic into `internal/goflow`.
-- Corrected dependency direction so CLI and HTTP depend on the core package rather than the reverse.
+```mermaid
+classDiagram
+    class Job {
+        string ID
+        string Type
+        []byte Payload
+        JobStatus Status
+        int Attempts
+        int MaxAttempts
+        time.Time AvailableAt
+        string LastError
+    }
+```
 
-### Diagram
+| Field | Purpose |
+|---|---|
+| `ID` | Stable job identifier. |
+| `Type` | Job category such as `email` or `report`. |
+| `Payload` | Optional binary payload. |
+| `Status` | Current state: `pending`, `running`, `completed`, or `dead_letter`. |
+| `Attempts` | Number of execution attempts already made. |
+| `MaxAttempts` | Retry budget. |
+| `AvailableAt` | Earliest time a pending job can be picked up. |
+| `LastError` | Last recorded execution error. |
+
+## Persistence Design
+
+PostgreSQL is the source of truth for job state. The repository uses `database/sql` with context-aware methods and parameterized queries.
 
 ```mermaid
 flowchart TD
-    CLI[cmd/goflow main.go CLI] --> Core[internal/goflow]
-    HTTP[cmd/goflow http.go handlers] --> Core
-    Middleware[cmd/goflow middleware.go] --> HTTP
-    Core --> JSON[(jobs.json)]
+    Store[JobStore methods] --> SQL[Parameterized SQL]
+    SQL --> DB[(PostgreSQL jobs table)]
+    DB --> Scan[scanJob]
+    Scan --> Job[Job domain value]
 ```
 
-### Flow
+### Repository Operations
+
+| Operation | SQL Behavior |
+|---|---|
+| `Create` | Inserts a new job and maps duplicate primary key errors to `ErrJobAlreadyExists`. |
+| `Get` | Reads one job by ID and maps missing rows to `ErrJobNotFound`. |
+| `List` | Reads all jobs ordered by creation time and ID. |
+| `ListReadyJobs` | Reads pending jobs where `available_at <= NOW()`. |
+| `ClaimPending` | Atomically changes one pending job to running. |
+| `Update` | Persists a full job state update. |
+| `Delete` | Deletes one job by ID. |
+| `Ping` | Checks PostgreSQL readiness. |
+
+### Atomic Claim
+
+The ownership boundary is the database, not the in-memory queue.
+
+```sql
+UPDATE jobs
+SET status = 'running', updated_at = NOW()
+WHERE id = $1
+AND status = 'pending';
+```
+
+If one row is affected, the worker owns the job. If zero rows are affected, the job was missing or no longer pending. The service reloads the job only to translate that result into the correct domain error.
+
+## Job State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> running: ClaimPending succeeds
+    running --> completed: CompleteJob
+    running --> pending: temporary failure and attempts remain
+    running --> dead_letter: permanent failure
+    running --> dead_letter: retry budget exhausted
+```
+
+### State Rules
+
+| Transition | Owner | Rule |
+|---|---|---|
+| `pending -> running` | `StartJob` + `ClaimPending` | Only a pending job can be claimed. |
+| `running -> completed` | `CompleteJob` | Only a running job can complete. |
+| `running -> pending` | `FailJob` | Temporary failure with retry budget remaining. |
+| `running -> dead_letter` | `FailJob` | Permanent failure or exhausted retry budget. |
+
+## Worker Design
+
+The worker command has three moving parts:
+
+1. Poller: periodically asks PostgreSQL for ready pending jobs.
+2. Queue: bounded channel of job IDs.
+3. Workers: fixed number of goroutines that claim and process jobs.
+
+```mermaid
+flowchart TD
+    Poller[Poller loop] --> Ready[ListReadyJobs]
+    Ready --> QueuedSet[queued map + mutex]
+    QueuedSet --> Channel[bounded jobs channel]
+    Channel --> W1[Worker 1]
+    Channel --> W2[Worker 2]
+    Channel --> W3[Worker 3]
+    W1 --> Process[processQueuedJob]
+    W2 --> Process
+    W3 --> Process
+    Process --> Claim[StartJob / ClaimPending]
+    Process --> Execute[executeJob]
+    Execute --> Complete[CompleteJob]
+    Execute --> Fail[FailJob]
+```
+
+### Worker Settings
+
+| Setting | Current Value | Reason |
+|---|---:|---|
+| Worker count | `3` | Bounded concurrency and simple local debugging. |
+| Queue size | `8` | Allows a small backlog while still applying backpressure. |
+| Poll interval | `2s` | Keeps polling simple without busy-looping. |
+
+### Queue And Backpressure
+
+The queue is a bounded channel. The poller can enqueue a small number of ready jobs without blocking, but once the buffer fills, enqueueing blocks until workers receive jobs. This prevents unbounded in-memory growth.
+
+The `queued` map reduces repeated enqueueing inside one worker process. It is protected by a mutex because the poller and workers both access it.
+
+### Worker Execution Flow
 
 ```mermaid
 sequenceDiagram
-    participant Main as cmd/goflow main.go
-    participant HTTP as http.go
-    participant Core as internal/goflow
-    participant File as jobs.json
+    participant Worker
+    participant Service
+    participant Repo
+    participant Exec as Executor
 
-    Main->>Core: LoadStore / StartJob / Job creation
-    HTTP->>Core: LoadStore / Store methods / errors
-    Core->>File: read and write persisted jobs
-    Core-->>Main: shared logic results
-    Core-->>HTTP: shared logic results
-```
-
-## Day 10 - Module 2.4: PostgreSQL Runtime Switch
-
-### Goal
-
-Replace the old file-based runtime path with PostgreSQL while keeping the higher-level service boundary clean.
-
-### Design change
-
-- Added `cmd/goflow/database.go` for database startup helpers.
-- Added the PostgreSQL driver dependency with `github.com/lib/pq`.
-- Added `openPostgresStore(...)` to read `DATABASE_URL`, open `*sql.DB`, configure pooling, run `PingContext(...)`, and apply the first migration.
-- Switched CLI commands from `LoadStore(jobs.json)` to the PostgreSQL-backed repository.
-- Switched HTTP handlers from file reloads to one shared store dependency.
-- Updated `StartJob(...)` to use `context.Context` and the shared `JobStore` abstraction.
-- Replaced sequential ID generation with random ID generation.
-
-### Diagram
-
-```mermaid
-flowchart TD
-    CLI[CLI in cmd/goflow] --> Main[main.go]
-    HTTP[HTTP requests] --> Handlers[http.go handlers]
-    Main --> DBSetup[database.go startup helpers]
-    Handlers --> Store[JobStore]
-    Main --> Store
-    Store --> PG[PostgresRepository]
-    DBSetup --> PG
-    PG --> DB[(PostgreSQL)]
-    DBSetup --> Migration[001_create_jobs.sql]
-```
-
-### Flow
-
-```mermaid
-sequenceDiagram
-    participant Caller as CLI or HTTP layer
-    participant Main as startup/wiring
-    participant Repo as PostgresRepository
-    participant DB as PostgreSQL
-
-    Caller->>Main: start command or request path
-    Main->>DB: sql.Open + PingContext + migration
-    Main->>Repo: create shared repository
-    Caller->>Repo: Create/Get/List/Update/Delete with context
-    Repo->>DB: ExecContext / QueryRowContext / QueryContext
-    DB-->>Repo: result or rows
-    Repo-->>Caller: job data or error
-```
-
-### Why this matters
-
-- The app now targets a real relational persistence boundary.
-- The service layer still depends on a store abstraction instead of SQL details.
-- HTTP request context can flow into DB work.
-- Startup owns connectivity checks and schema setup instead of handlers.
-
-## Known Current Limitations
-
-- Live PostgreSQL validation completed on 2026-09-02 through the repository integration test and real HTTP requests.
-- The current schema still uses `BYTEA` for `payload`, which is simpler than the roadmap's suggested `JSONB` shape.
-- The runtime was validated against a Docker-based PostgreSQL 16 container named `goflow-postgres`.
-- Repository behavior now has `sqlmock` tests plus a real integration-test entry point.
-- Content-type validation is still strict and does not yet allow variants like `application/json; charset=utf-8`.
-
-## Related Documents
-
-- `docs/tracker.md`
-- `docs/learning.md`
-- `docs/session-log.md`
-- `docs/decisions.md`
-
-## Day 11 - Module 2.5: Testing Layer Introduction
-
-### Goal
-
-Complete the first real testing layer for the PostgreSQL-backed API and ensure the Week 2 HTTP surface matches the roadmap deliverable.
-
-### Design change
-
-- Added `internal/goflow/service_test.go` for service-layer behavior.
-- Added `cmd/goflow/http_test.go` for handler-level HTTP behavior.
-- Added `internal/goflow/postgres_repository_test.go` for repository unit tests with `sqlmock`.
-- Added `internal/goflow/postgres_repository_integration_test.go` for the real PostgreSQL path.
-- Extended the HTTP API to support `DELETE /v1/jobs/{id}` and `GET /v1/jobs?status=...`.
-- Introduced `jobByIDHandler` so one path can dispatch by method for single-job operations.
-
-### Testing boundaries
-
-- Service tests validate state-transition rules.
-- Handler tests validate status codes, JSON bodies, validation failures, filtering, and deletion behavior.
-- Repository tests validate SQL interactions and error mapping.
-- Integration tests validate the live PostgreSQL path.
-
-### Diagram
-
-```mermaid
-flowchart TD
-    ServiceTests[service_test.go] --> Service[StartJob]
-    Service --> FakeStore[fakeJobStore]
-    HandlerTests[http_test.go] --> Handlers[HTTP handlers]
-    Handlers --> FakeAPIStore[fakeAPIStore]
-    HandlerTests --> HTTPTest[httptest request/recorder]
-    RepoTests[postgres_repository_test.go] --> SQLMock[sqlmock]
-    Integration[TestPostgresRepositoryIntegration] --> Postgres[(PostgreSQL)]
-```
-
-### Flow
-
-```mermaid
-sequenceDiagram
-    participant Test as test case
-    participant Boundary as service, handler, or repository
-    participant Double as fake, sqlmock, or PostgreSQL
-
-    Test->>Boundary: call function or handler
-    Boundary->>Double: use dependency
-    Double-->>Boundary: controlled or real result
-    Boundary-->>Test: response or error
-    Test-->>Test: assert status, body, state change, or DB effect
-```
-
-### Why this matters
-
-- Testing now matches the architecture boundaries introduced earlier.
-- The HTTP API now matches the Week 2 roadmap surface: create, retrieve, list, filter, and delete.
-- Repository tests reduce the risk of silent SQL regressions.
-- Live integration validation proves the PostgreSQL runtime, not just the test doubles.
-
-## Day 11 Validation Update
-
-- Live PostgreSQL integration was validated on 2026-09-02 with Docker PostgreSQL, `TestPostgresRepositoryIntegration`, and real HTTP requests to `/health/live`, `/v1/jobs`, and `/v1/jobs/{id}`.
-- The test strategy now has four useful levels: service fakes, handler tests with `httptest`, repository tests with `sqlmock`, and a real database integration path.
-- The Week 2 API surface now includes both `status` filtering on `GET /v1/jobs` and deletion through `DELETE /v1/jobs/{id}`.
-
-## Day 13 - Module 3.1: First Worker Pipeline
-
-### Goal
-
-Introduce the first in-process concurrency flow for GoFlow without yet adding a full worker pool or atomic claim logic.
-
-### Design change
-
-- Added a new CLI command: `work`.
-- `work` opens the PostgreSQL-backed store once.
-- `work` creates `jobs chan string` carrying job IDs.
-- One worker goroutine receives IDs and calls `goflow.StartJob(...)`.
-- The poll loop lists pending jobs and enqueues their IDs.
-- The worker now listens to both the jobs channel and `workCtx.Done()`.
-- `signal.NotifyContext(...)` is used so the command can stop on interrupt.
-
-### Diagram
-
-```mermaid
-flowchart TD
-    Work[go run ./cmd/goflow work] --> Poller[poll loop]
-    Poller --> Jobs[jobs chan string]
-    Jobs --> Worker[single worker goroutine]
-    Worker --> Service[StartJob]
-    Service --> Repo[PostgresRepository]
-    Repo --> DB[(PostgreSQL)]
-```
-
-### Flow
-
-```mermaid
-sequenceDiagram
-    participant Work as work command
-    participant Poller as poll loop
-    participant Ch as jobs channel
-    participant Worker as worker goroutine
-    participant DB as PostgreSQL
-
-    Work->>Poller: start loop
-    Poller->>DB: list jobs
-    Poller->>Ch: send pending job ID
-    Worker->>Ch: receive job ID
-    Worker->>DB: StartJob -> Get + Update
-    DB-->>Worker: job claimed as running
-```
-
-### Why this matters
-
-- This is the first real producer/consumer pipeline in GoFlow.
-- The command now demonstrates goroutine ownership, channel handoff, and context-based shutdown in real project code.
-- The design still has duplicate-enqueue risk, which is a useful lead-in to later synchronization and claiming work.
-
-### Day 13 completion update
-
-- The `jobs` channel is now bounded with a small buffer instead of being unbuffered.
-- This makes the queue behavior closer to a real work buffer while still preserving backpressure once the buffer fills.
-- Shutdown now propagates through one owned context to both the poller and the worker.
-
-## Day 14 - Module 3.2: Shared Bookkeeping Synchronization
-
-### Goal
-
-Protect the first shared in-memory bookkeeping used by the worker pipeline as GoFlow moves from basic concurrency into coordinated concurrency.
-
-### Design change
-
-- Added a mutex-protected `queued` set local to the `work` command.
-- The poller records a job ID in the set before enqueueing it.
-- The worker removes the job ID after the claim attempt finishes.
-- The channel remains the communication path; the mutex protects only the separate shared map.
-
-### Diagram
-
-```mermaid
-flowchart TD
-    Poller[poll loop] --> QueueSet[queued set + mutex]
-    Poller --> Jobs[jobs channel]
-    Jobs --> Worker[worker goroutine]
-    Worker --> QueueSet
-    Worker --> Service[StartJob]
-```
-
-### Why this matters
-
-- This is the first explicit shared-memory synchronization step in GoFlow.
-- It demonstrates the boundary between channel-based communication and mutex-protected bookkeeping.
-- It reduces duplicate enqueueing within the current process and prepares the design for a later worker pool.
-
-## Day 15 - Module 3.3: Worker Pool Expansion
-
-### Goal
-
-Expand the single-worker pipeline into a small bounded worker pool while keeping ownership, queue behavior, and shutdown coordination explicit.
-
-### Design change
-
-- Added `workerCount = 3`.
-- Replaced one worker goroutine with a loop that starts three workers.
-- Added `sync.WaitGroup` so the `work` command waits for all workers to stop.
-- Added worker IDs to processing, failure, and shutdown logs.
-- Kept the same shared `jobs` channel and mutex-protected `queued` set.
-
-### Diagram
-
-```mermaid
-flowchart TD
-    Poller[poll loop] --> Jobs[jobs channel]
-    Jobs --> W1[worker 1]
-    Jobs --> W2[worker 2]
-    Jobs --> W3[worker 3]
-    W1 --> Service[StartJob]
-    W2 --> Service
-    W3 --> Service
-    Service --> Repo[PostgresRepository]
-```
-
-### Why this matters
-
-- GoFlow now has bounded concurrent consumers instead of a single worker.
-- The shared queue plus fixed worker count demonstrates the standard worker-pool pattern.
-- Coordinated shutdown with `WaitGroup` becomes visible and necessary once the pool has several workers.
-
-## Day 16 - Module 3.4: Context and Graceful Shutdown
-
-### Goal
-
-Give GoFlow's long-running `serve` and `work` commands explicit cancellation ownership and graceful shutdown behavior.
-
-### Design change
-
-- `serve` now owns a signal context for server lifetime.
-- database startup uses a short child timeout context.
-- `ListenAndServe()` runs in a goroutine so the main goroutine can wait for Ctrl+C.
-- `server.Shutdown(...)` uses a fresh 5-second timeout context.
-- `work` now treats the poller as the owner of the jobs channel and worker shutdown sequence.
-- worker shutdown uses `close(jobs)` plus `WaitGroup` coordination.
-
-### HTTP shutdown flow
-
-```mermaid
-flowchart TD
-    Start[go run ./cmd/goflow serve] --> SignalCtx[signal.NotifyContext]
-    SignalCtx --> StartupCtx[5s startup context]
-    StartupCtx --> DB[open PostgreSQL store]
-    DB --> Server[http.Server]
-    Server --> Listen[ListenAndServe goroutine]
-    SignalCtx --> Interrupt[Ctrl+C cancels serverCtx]
-    Interrupt --> ShutdownCtx[fresh 5s shutdown context]
-    ShutdownCtx --> Shutdown[server.Shutdown]
-    Shutdown --> Stop[server stopped]
-```
-
-### Worker shutdown flow
-
-```mermaid
-flowchart TD
-    Work[go run ./cmd/goflow work] --> WorkCtx[signal.NotifyContext]
-    WorkCtx --> Poller[poll pending jobs]
-    Poller --> Queue[jobs channel]
-    Queue --> Workers[worker pool]
-    WorkCtx --> Interrupt[Ctrl+C cancels workCtx]
-    Interrupt --> StopPoller[poller stops]
-    StopPoller --> CloseQueue[close jobs channel]
-    CloseQueue --> WorkerExit[workers exit]
-    WorkerExit --> Wait[WaitGroup waits]
-    Wait --> Done[work command exits]
-```
-
-### Why this matters
-
-- The application now has explicit owners for cancellation and cleanup.
-- The HTTP path can stop without abruptly killing active requests.
-- The worker path can stop polling, signal workers, wait for them, and then release resources.
-- Concurrent log output is intentionally unordered, so correctness is based on shutdown coordination rather than printed order.
-
-## Day 17 - Module 3.5: Retries and Failure Handling
-
-### Goal
-
-Add a real worker failure state machine so GoFlow can complete successful jobs, retry temporary failures, and preserve exhausted or permanent failures as dead-letter jobs.
-
-### Design change
-
-- Added `available_at` as persistent retry scheduling metadata.
-- Added `last_error` as operational failure evidence.
-- Added `completed` and `dead_letter` terminal states.
-- Added `ListReadyJobs(ctx)` so the database selects only pending jobs whose retry delay has elapsed.
-- Kept retry decisions in the service layer through `CompleteJob(...)` and `FailJob(...)`.
-- Added a small simulated executor in the command layer so worker orchestration can exercise success, temporary failure, and permanent failure paths.
-
-### Retry state flow
-
-```mermaid
-flowchart TD
-    Pending[pending and available_at <= now] --> Running[running]
-    Running --> Success{execution result}
-    Success -->|success| Completed[completed]
-    Success -->|temporary failure and attempts remain| Retry[attempts incremented, last_error set, available_at moved forward]
-    Retry --> Pending
-    Success -->|temporary failure and attempts exhausted| Dead[dead_letter]
-    Success -->|permanent failure| Dead
-```
-
-### Worker flow
-
-```mermaid
-sequenceDiagram
-    participant Poller as Poller
-    participant Repo as PostgresRepository
-    participant Worker as Worker
-    participant Service as Service
-    participant Exec as executeJob
-
-    Poller->>Repo: ListReadyJobs(ctx)
-    Repo-->>Poller: ready pending jobs
-    Poller->>Worker: send job ID on channel
     Worker->>Service: StartJob(ctx, id)
+    Service->>Repo: ClaimPending(ctx, id)
+    Repo-->>Service: claimed / not claimed / error
+    Service-->>Worker: result
     Worker->>Repo: Get(ctx, id)
     Worker->>Exec: executeJob(ctx, job)
     alt success
@@ -561,452 +323,261 @@ sequenceDiagram
     end
 ```
 
-### Why this matters
+## Retry And Dead-Letter Design
 
-- Retry state now survives process restarts because it is stored in PostgreSQL.
-- Workers are not blocked sleeping for future retries.
-- Dead-letter jobs remain queryable for diagnosis.
-- Service-layer transition functions prevent worker code from spreading business rules across the command layer.
+Retry information is persisted in the same `jobs` table.
 
-## Day 18 - Module 3.6: Concurrency Testing
-
-### Goal
-
-Make GoFlow's worker behavior testable under deterministic conditions and validate the code with the Go race detector.
-
-### Design change
-
-- Extracted single-job worker behavior into `processQueuedJob(...)`.
-- Injected the job executor so tests can force success, temporary failure, permanent failure, or cancellation.
-- Injected the clock so retry scheduling can be asserted without relying on real time.
-- Kept the long-running polling loop in `main.go`, but moved the state-transition path into a focused test seam.
-
-### Test seam flow
+| Field | Role In Retry |
+|---|---|
+| `attempts` | Counts failed execution attempts. |
+| `max_attempts` | Caps retry attempts. |
+| `available_at` | Schedules the next retry time. |
+| `last_error` | Stores the latest failure reason. |
+| `status` | Determines whether the job is eligible, running, completed, or dead-lettered. |
 
 ```mermaid
 flowchart TD
-    Test[Test case] --> FakeStore[Fake JobStore]
-    Test --> FakeExecutor[Injected executor]
-    Test --> FakeClock[Injected now function]
-    FakeStore --> Process[processQueuedJob]
-    FakeExecutor --> Process
-    FakeClock --> Process
-    Process --> Start[StartJob pending to running]
-    Start --> Execute[executor result]
-    Execute -->|success| Complete[CompleteJob running to completed]
-    Execute -->|temporary failure| Retry[FailJob running to pending with available_at]
-    Execute -->|permanent failure| Dead[FailJob running to dead_letter]
-    Execute -->|context canceled| Canceled[return context.Canceled]
+    Running[running] --> Result{execution result}
+    Result -->|success| Completed[completed]
+    Result -->|temporary and attempts remain| Retry[pending with future available_at]
+    Retry --> Pending[pending]
+    Result -->|temporary and exhausted| Dead[dead_letter]
+    Result -->|permanent| Dead
 ```
 
-### Race validation flow
+Workers do not sleep while holding failed jobs. Instead, `FailJob` updates `available_at`; later polling picks the job when it becomes ready.
+
+## Context And Shutdown Design
+
+GoFlow uses command-owned contexts for long-running processes.
+
+### HTTP Shutdown
+
+```mermaid
+flowchart TD
+    Serve[serve command] --> SignalCtx[signal.NotifyContext]
+    SignalCtx --> StartupCtx[startup timeout]
+    StartupCtx --> DB[open PostgreSQL]
+    DB --> Server[http.Server]
+    Server --> Listen[ListenAndServe goroutine]
+    SignalCtx --> ShutdownSignal[interrupt]
+    ShutdownSignal --> ShutdownCtx[fresh shutdown timeout]
+    ShutdownCtx --> Graceful[server.Shutdown]
+    Graceful --> Exit[process exits]
+```
+
+The HTTP server stops accepting new requests and gives active requests a bounded shutdown window.
+
+### Worker Shutdown
+
+```mermaid
+flowchart TD
+    Work[work command] --> WorkCtx[signal.NotifyContext]
+    WorkCtx --> Poller[Poller loop]
+    Poller --> Jobs[Jobs channel]
+    Jobs --> Workers[Worker pool]
+    WorkCtx --> Cancel[interrupt]
+    Cancel --> StopPoller[stop polling]
+    StopPoller --> CloseQueue[close jobs channel]
+    CloseQueue --> Drain[workers exit]
+    Drain --> Wait[WaitGroup waits]
+    Wait --> Exit[process exits]
+```
+
+The poller owns closing the jobs channel. Workers exit when the channel closes or when the context is cancelled.
+
+## Observability Design
+
+### Logs
+
+GoFlow uses `log/slog` JSON logs at runtime boundaries.
+
+| Log Source | Important Fields |
+|---|---|
+| HTTP middleware | `request_id`, `method`, `path`, `status`, `duration_ms` |
+| Job creation handler | `request_id`, `job_id`, `job_type` |
+| Worker loop | `worker_id`, `job_id`, `error` |
+
+Service and repository layers return errors instead of logging directly. Runtime boundaries decide how to log and present those errors.
+
+### Health
 
 ```mermaid
 flowchart LR
-    Tests[go test ./...] --> Normal[Behavior validation]
-    Race[go test -race ./...] --> Instrumented[Runtime race instrumentation]
-    Instrumented --> Access[Observe executed shared-memory accesses]
-    Access --> Result[Report unsafe read/write races]
+    Live[/health/live/] --> Process[process responds]
+    Ready[/health/ready/] --> Ping[PostgreSQL Ping]
+    Ping --> ReadyResult[ready or database not ready]
 ```
 
-### Why this matters
+`/health/live` answers whether the process is alive. `/health/ready` answers whether the service can handle real work that depends on PostgreSQL.
 
-- The race detector catches data races only on code paths that tests execute.
-- Deterministic worker tests prove important job transitions without relying on scheduler timing.
-- Data-race freedom and logical correctness are separate concerns.
-- The worker loop is still simple, while its important behavior is now testable in isolation.
+### Metrics
 
-## Week 3 Checkpoint: Worker Correctness Review
-
-### Goal
-
-Confirm that the worker design is understandable before moving into production-readiness modules.
-
-### Concurrency correctness map
+The metrics collector is in-process and mutex-protected.
 
 ```mermaid
 flowchart TD
-    Poller[Poller goroutine] -->|send job IDs| JobsChannel[jobs channel]
-    JobsChannel --> Worker1[Worker 1]
-    JobsChannel --> Worker2[Worker 2]
-    JobsChannel --> Worker3[Worker 3]
-    Poller -->|read/write| Queued[queued map]
-    Worker1 -->|delete after claim attempt| Queued
-    Worker2 -->|delete after claim attempt| Queued
-    Worker3 -->|delete after claim attempt| Queued
-    Mutex[sync.Mutex] --> Queued
-    Repo[PostgreSQL] -->|persistent status| Claim[StartJob pending to running]
-    Claim --> Idempotency[Idempotent external execution required]
+    HTTP[HTTP requests] --> HTTPMetrics[request count and duration buckets]
+    Create[Job creation] --> Submitted[jobs submitted counter]
+    Worker[Worker events] --> WorkerMetrics[job outcome counters and gauges]
+    MetricsEndpoint[/metrics/] --> Snapshot[metrics snapshot]
 ```
 
-### Why this matters
+Metrics are process-local. API and worker metrics are not aggregated when they run as separate processes.
 
-- The channel handles communication between poller and workers.
-- The mutex protects shared in-memory queue bookkeeping.
-- PostgreSQL status transitions provide persistent claim state.
-- Idempotency is still required because external effects and database updates are not one atomic operation.
+## Configuration Design
 
-## Day 19 - Module 4.1: Structured Logging
+Configuration is read from environment variables near process startup and passed into setup functions.
 
-### Goal
-
-Make GoFlow's important runtime events machine-readable with standard-library JSON structured logs.
-
-### Design change
-
-- Added a JSON `slog.Logger` in the `serve` and `work` command boundaries.
-- Added `requestLoggingMiddleware` to log HTTP request completion.
-- Added a response-writer wrapper to capture response status codes.
-- Added handler-level `job created` logs after successful `POST /v1/jobs`.
-- Kept service and repository layers log-free so errors are logged once at the boundary.
-
-### HTTP logging flow
-
-```mermaid
-sequenceDiagram
-    participant Client as Client
-    participant ReqID as requestIDMiddleware
-    participant LogMW as requestLoggingMiddleware
-    participant Handler as HTTP Handler
-    participant Logger as slog JSON logger
-
-    Client->>ReqID: HTTP request
-    ReqID->>ReqID: assign request_id
-    ReqID->>LogMW: request with context
-    LogMW->>Handler: wrapped ResponseWriter
-    Handler-->>LogMW: response status/body
-    LogMW->>Logger: http request completed with request_id, method, path, status, duration_ms
-```
-
-### Worker logging flow
+| Variable | Requirement | Design Reason |
+|---|---|---|
+| `DATABASE_URL` | Required | Missing database configuration should fail fast. |
+| `HTTP_ADDR` | Optional | Safe operational default of `:8080`. |
+| `MIGRATION_FILE` | Optional | Defaults to the bundled migration path. |
 
 ```mermaid
 flowchart TD
-    Worker[Worker goroutine] --> Processing[log job processing]
-    Processing --> Execute[processQueuedJob]
-    Execute -->|success| Completed[log job completed]
-    Execute -->|failure| Failed[log job failed with error]
-    Execute -->|context canceled| Stopping[log worker stopping]
+    Env[Environment] --> Load[loadConfig]
+    Load --> Validate[validate required values]
+    Validate --> Main[command startup]
+    Main --> DB[openPostgresStore]
+    Main --> HTTP[http.Server address]
+    Main --> Migration[migratePostgres]
 ```
 
-### Why this matters
+Runtime code receives explicit configuration values instead of reading environment variables deep inside handlers or repositories.
 
-- `request_id` connects response headers to server-side logs.
-- `job_id` connects worker events for a single job.
-- JSON logs prepare the project for log aggregation and later observability work.
-- Logging at boundaries avoids duplicated service/repository logs.
+## Deployment Design
 
-## Day 20 - Module 4.2: Observability
-
-### Goal
-
-Expose basic runtime signals for health and metrics without introducing a production metrics dependency yet.
-
-### Design change
-
-- Added `/health/ready` for dependency readiness.
-- Added `PostgresRepository.Ping(ctx)` for PostgreSQL readiness checks.
-- Added `/metrics` returning a JSON snapshot from an in-process metrics collector.
-- Added mutex protection around metrics state.
-- Added HTTP request counters and duration buckets.
-- Added worker-process counters and gauges while documenting that they are not visible from the separate server process.
-
-### Health flow
-
-```mermaid
-flowchart TD
-    Live[/GET /health/live/] --> LiveResult[200 if process can respond]
-    Ready[/GET /health/ready/] --> Ping[PostgresRepository.Ping]
-    Ping -->|success| ReadyOK[200 ready]
-    Ping -->|failure| ReadyFail[503 DATABASE_NOT_READY]
-```
-
-### Metrics flow
-
-```mermaid
-flowchart TD
-    Request[HTTP request] --> Middleware[requestLoggingMiddleware]
-    Middleware --> Count[http_requests_total counter]
-    Middleware --> Duration[duration bucket observation]
-    Create[POST /v1/jobs success] --> Submitted[jobs_submitted_total counter]
-    Metrics[/GET /metrics/] --> Snapshot[mutex-protected metrics snapshot]
-    Snapshot --> JSON[JSON metrics response]
-```
-
-### Worker metrics limitation
+### Container Image
 
 ```mermaid
 flowchart LR
-    Serve[serve process] --> MetricsEndpoint[/metrics endpoint/]
-    MetricsEndpoint --> HTTPMetrics[HTTP in-process metrics]
-    Work[work process] --> WorkerMetrics[worker in-process metrics]
-    WorkerMetrics -. not visible to .-> MetricsEndpoint
-```
-
-### Why this matters
-
-- Health endpoints support safe orchestration decisions.
-- Metrics show operational trends that logs alone cannot summarize.
-- Mutex-protected snapshots avoid data races when handlers and goroutines read/write metrics.
-- The separate-process limitation is explicit, preventing misleading assumptions about worker visibility.
-
-## Day 21 - Module 4.3: Profiling and Performance
-
-### Goal
-
-Create a measured performance baseline before changing code, and learn how benchmark, CPU profile, memory profile, and escape-analysis output fit together.
-
-### Design change
-
-- Added benchmark coverage for the metrics snapshot hot path.
-- Profiled the parallel snapshot benchmark to inspect contention.
-- Confirmed `metrics.snapshot()` has `0 allocs/op` in the benchmark.
-- Kept the current mutex-based design because the measured cost is small and no production bottleneck has been proven.
-- Generated CPU, heap, mutex, block, and trace artifacts.
-- Added generated profile artifacts to `.gitignore`.
-
-### Measurement workflow
-
-```mermaid
-flowchart LR
-    HotPath[Choose hot path] --> Benchmark[Run benchmark with benchmem]
-    Benchmark --> CPU[Capture CPU profile]
-    Benchmark --> Memory[Capture memory profile]
-    Benchmark --> Mutex[Capture mutex/block profiles]
-    Benchmark --> Trace[Capture execution trace]
-    CPU --> Bottleneck[Identify real bottleneck]
-    Memory --> Allocations[Identify allocation pressure]
-    Mutex --> Waiting[Identify goroutine waiting]
-    Trace --> Timeline[Inspect runtime timeline]
-    Bottleneck --> Decision[Optimize only if justified]
-    Allocations --> Decision
-    Waiting --> Decision
-    Timeline --> Decision
-```
-
-### Metrics snapshot profile
-
-```mermaid
-flowchart TD
-    MetricsEndpoint[/GET /metrics/] --> Snapshot[metrics.snapshot]
-    Snapshot --> Lock[mutex lock]
-    Lock --> Copy[copy counters into snapshot struct]
-    Copy --> Unlock[mutex unlock]
-    Unlock --> JSON[handler encodes JSON response]
-```
-
-### Profile artifact policy
-
-```mermaid
-flowchart LR
-    Bench[Benchmark run] --> CPUOut[cpu.out]
-    Bench --> MemOut[mem.out]
-    Bench --> MutexOut[mutex.out]
-    Bench --> BlockOut[block.out]
-    Bench --> TraceOut[trace.out]
-    CPUOut --> Gitignore[ignored by git]
-    MemOut --> Gitignore
-    MutexOut --> Gitignore
-    BlockOut --> Gitignore
-    TraceOut --> Gitignore
-```
-
-### Why this matters
-
-- The codebase now has a repeatable performance baseline for one operational hot path.
-- The current metrics snapshot is allocation-free in the benchmark.
-- The parallel benchmark makes lock contention visible without prematurely replacing the simple mutex design.
-- Generated profiling files are local diagnostics, not source artifacts.
-
-## Day 22 - Module 4.4: Security
-
-### Goal
-
-Tighten GoFlow's public boundaries without adding a full authentication system yet.
-
-### Design change
-
-- Added allowlist validation for public job creation types.
-- Added job ID format validation before storage lookup/delete.
-- Added status query validation before filtering.
-- Hardened `Content-Type` parsing with `mime.ParseMediaType`.
-- Added HTTP server timeouts.
-- Documented that the API is local/internal until authentication and authorization exist.
-
-### HTTP input validation flow
-
-```mermaid
-flowchart TD
-    Request[HTTP request] --> Method[method routing]
-    Method --> ContentType[POST Content-Type validation]
-    ContentType --> BodyLimit[1 MB body limit]
-    BodyLimit --> Decode[JSON decode]
-    Decode --> Validate[allowlist and format validation]
-    Validate -->|invalid| Error[400/415 safe JSON error]
-    Validate -->|valid| Store[repository call]
-```
-
-### Error handling boundary
-
-```mermaid
-flowchart LR
-    Store[Repository/database error] --> Handler[HTTP handler boundary]
-    Handler --> Client[Safe external error]
-    Handler --> Logs[Internal structured log metadata]
-    Client -. no raw SQL/db details .-> Client
-```
-
-### Auth boundary
-
-```mermaid
-flowchart TD
-    PublicInternet[Public internet] -->|do not expose yet| GoFlowAPI[GoFlow HTTP API]
-    InternalNetwork[Local/internal network] --> GoFlowAPI
-    FutureAuth[Future auth middleware] --> GoFlowAPI
-```
-
-### Why this matters
-
-- Validation distinguishes malformed requests from missing resources.
-- Timeouts and body limits reduce simple denial-of-service risk.
-- Safe errors avoid leaking schema, SQL, or configuration details.
-- The current API surface is explicitly not production-public until auth is added.
-
-## Day 23 - Module 4.5: Containers and Configuration
-
-### Goal
-
-Make GoFlow runnable through explicit configuration and a reproducible Docker Compose stack.
-
-### Design change
-
-- Added central config loading for `DATABASE_URL`, `HTTP_ADDR`, and `MIGRATION_FILE`.
-- Split schema migration into `goflow migrate`.
-- Added a multi-stage Dockerfile with a distroless non-root runtime.
-- Added Compose services for PostgreSQL, migration, API, and worker.
-- Added `.dockerignore` and `.env.example` for build/config hygiene.
-
-### Configuration flow
-
-```mermaid
-flowchart TD
-    Env[Environment variables] --> Load[loadConfig]
-    Load --> Validate[fail fast if DATABASE_URL missing]
-    Validate --> Main[main command dispatch]
-    Main --> DB[openPostgresStore with cfg]
-    Main --> HTTP[http.Server Addr from cfg.HTTPAddr]
-    Main --> Migration[migratePostgres with cfg.MigrationFile]
-```
-
-### Compose startup flow
-
-```mermaid
-flowchart TD
-    Postgres[postgres service] -->|healthy| Migrate[goflow-migrate]
-    Migrate -->|completed successfully| API[goflow-api serve]
-    Migrate -->|completed successfully| Worker[goflow-worker work]
-    API -->|DATABASE_URL host postgres| Postgres
-    Worker -->|DATABASE_URL host postgres| Postgres
-```
-
-### Docker image flow
-
-```mermaid
-flowchart LR
-    Source[Go source and modules] --> Builder[golang builder image]
-    Builder --> Binary[compiled goflow binary]
+    Source[Source code] --> Builder[Go builder image]
+    Builder --> Binary[compiled binary]
     Binary --> Runtime[distroless non-root runtime]
-    Migrations[migrations directory] --> Runtime
+    Migrations[migrations/] --> Runtime
 ```
 
-### Why this matters
+The Dockerfile uses a multi-stage build. The final image contains the compiled binary and migrations, not the Go compiler or source tree.
 
-- Config is explicit, tested, and owned by startup code.
-- Runtime services no longer race to apply migrations.
-- The container image contains only what GoFlow needs to run.
-- Compose validates the real API/worker/PostgreSQL wiring used outside the local terminal.
-
-
-
-## Day 24 - Module 4.6: CI and Engineering Workflow
-
-### Goal
-
-Make the project reviewable and repeatably validatable from a clean environment before changes reach `main`.
-
-### Design change
-
-- Added a GitHub Actions workflow as the main CI gate.
-- Added PostgreSQL as a CI service container so integration tests run against a real database.
-- Added Docker image build and Compose config validation to the same workflow.
-- Expanded README into operational project documentation.
-- Added a changelog for release discipline.
-
-### CI flow
+### Compose Topology
 
 ```mermaid
 flowchart TD
-    Push[push or pull request] --> Checkout[checkout source]
-    Checkout --> SetupGo[setup Go from go.mod]
-    SetupGo --> Tidy[go mod tidy + diff check]
-    Tidy --> Format[go fmt + diff check]
+    Postgres[postgres] -->|healthy| Migrate[goflow-migrate]
+    Migrate -->|completed successfully| API[goflow-api]
+    Migrate -->|completed successfully| Worker[goflow-worker]
+    API --> Postgres
+    Worker --> Postgres
+```
+
+Migrations run as a distinct service before API and worker processes start. This avoids API and worker processes racing to apply schema changes.
+
+## Testing Design
+
+Testing follows the system boundaries.
+
+| Test Type | Files | Purpose |
+|---|---|---|
+| Handler tests | `cmd/goflow/http_test.go` | Validate HTTP status codes, JSON bodies, input validation, and API errors. |
+| Config tests | `cmd/goflow/config_test.go` | Validate environment-based configuration behavior. |
+| Metrics tests | `cmd/goflow/metrics_test.go` | Validate counters, gauges, and duration buckets. |
+| Worker tests | `cmd/goflow/worker_test.go` | Validate processing success, retry, dead-letter, and cancellation paths. |
+| Service tests | `internal/goflow/service_test.go` | Validate business state transitions and error behavior. |
+| Repository tests | `internal/goflow/postgres_repository_test.go` | Validate SQL expectations and database error mapping with `sqlmock`. |
+| Integration tests | `internal/goflow/postgres_repository_integration_test.go` | Validate repository behavior against a real PostgreSQL database. |
+| Benchmarks | `cmd/goflow/metrics_benchmark_test.go` | Measure metrics snapshot performance. |
+
+```mermaid
+flowchart TD
+    Tests[go test ./...] --> Handler[HTTP handler behavior]
+    Tests --> Service[State transition behavior]
+    Tests --> Repo[Repository SQL behavior]
+    Tests --> Worker[Worker processing behavior]
+    Tests --> Metrics[Metrics behavior]
+    Integration[PostgreSQL integration test] --> DB[(PostgreSQL)]
+    Race[go test -race ./...] --> RaceDetector[Data race detection]
+```
+
+## CI Design
+
+GitHub Actions validates the project from a clean environment.
+
+```mermaid
+flowchart TD
+    Change[push or pull request] --> Checkout[checkout]
+    Checkout --> SetupGo[setup Go]
+    SetupGo --> Tidy[go mod tidy diff check]
+    Tidy --> Format[go fmt diff check]
     Format --> Vet[go vet]
     Vet --> Test[go test with PostgreSQL service]
     Test --> Race[go test -race]
     Race --> Vuln[govulncheck]
-    Vuln --> Build[go build with metadata]
+    Vuln --> Build[go build]
     Build --> Docker[docker build]
     Docker --> Compose[docker compose config]
 ```
 
-### Documentation map
+CI protects the main branch from unformatted code, untidy dependencies, test failures, race regressions, known reachable vulnerabilities, broken builds, and invalid container configuration.
 
-```mermaid
-flowchart LR
-    README[README.md] --> Setup[setup and commands]
-    README --> API[API examples]
-    README --> Ops[runbook]
-    README --> Limits[known limitations]
-    CHANGELOG[CHANGELOG.md] --> Release[release notes]
-    CI[.github/workflows/ci.yml] --> Gates[automated checks]
-```
+## Security Design
 
-### Why this matters
+| Area | Design Choice |
+|---|---|
+| SQL injection | Use parameterized SQL only. |
+| Input validation | Validate job types, status filters, and job ID format at the HTTP boundary. |
+| Request size | Limit request bodies to 1 MB. |
+| Timeouts | Configure HTTP read-header, read, write, and idle timeouts. |
+| Error exposure | Return safe external errors; do not expose raw database errors. |
+| Secrets | Read `DATABASE_URL` from environment; do not log or commit secrets. |
+| Logging | Log metadata, not request bodies or payloads. |
+| Public exposure | Treat the API as internal until authentication and authorization exist. |
 
-- CI turns project quality rules into executable checks.
-- Integration validation catches database and migration assumptions that unit tests can miss.
-- Docker and Compose checks keep deployment packaging from silently drifting.
-- README and changelog make the project understandable to future maintainers and reviewers.
+## Consistency Guarantees
 
+GoFlow guarantees atomic ownership of a job claim through PostgreSQL conditional update. It does not guarantee exactly-once external side effects.
 
-## Final Review Update: Atomic Job Claim
+| Guarantee | Status |
+|---|---|
+| One worker can claim a pending job in a successful atomic claim. | Provided by `ClaimPending`. |
+| Ready jobs survive process restarts. | Provided by PostgreSQL persistence. |
+| Retry schedule survives process restarts. | Provided by `available_at`. |
+| Worker shutdown has a cancellation path. | Provided by command-owned context and channel closure. |
+| External side effects happen exactly once. | Not guaranteed. Requires idempotent executors. |
 
-### Goal
+## Design Trade-Offs
 
-Close the duplicate-ownership gap found during the final roadmap review.
+| Decision | Benefit | Trade-Off |
+|---|---|---|
+| One binary with multiple commands | Simple build and deployment artifact. | Commands share one executable package. |
+| Standard `net/http` | Clear Go-native request handling. | Less routing convenience than a framework. |
+| PostgreSQL as queue state | Durable job state and simple local stack. | Polling is less efficient than a dedicated broker at large scale. |
+| In-process metrics | Simple and dependency-free. | Metrics are not aggregated across processes. |
+| Distroless runtime image | Smaller image and reduced attack surface. | No shell or `curl` inside the container. |
+| Dead-letter as status | Simple schema and easy inspection. | No separate replay/audit workflow yet. |
+| Fixed worker settings in code | Easy to reason about. | Not runtime configurable yet. |
 
-### Design change
+## Known Limitations
 
-- `PostgresRepository` now exposes `ClaimPending(ctx, id)`.
-- The claim is a single conditional SQL update: only `pending` jobs can become `running`.
-- `StartJob` delegates the ownership transition to the repository instead of doing `Get -> Update` itself.
-- If the claim fails, the service reloads the job only to translate the result into a domain error such as not found or invalid status.
+- No authentication or authorization.
+- No real external job integrations; job execution is simulated.
+- Metrics are process-local.
+- No distributed rate limiter.
+- No separate dead-letter table or replay workflow.
+- No least-privilege PostgreSQL role in the local Compose setup.
+- Retry delay has exponential backoff but no jitter yet.
+- Worker count, queue size, retry policy, and poll interval are not runtime configurable.
+- Exactly-once external execution is not guaranteed.
 
-### Flow
+## Future Design Improvements
 
-```mermaid
-flowchart TD
-    Worker[Worker receives job ID] --> Service[StartJob]
-    Service --> Claim[ClaimPending]
-    Claim --> SQL[UPDATE jobs SET status = running WHERE id = id AND status = pending]
-    SQL -->|1 row| Own[worker owns job]
-    SQL -->|0 rows| Inspect[Get job for error translation]
-    Inspect --> NotFound[ErrJobNotFound]
-    Inspect --> Invalid[InvalidJobStatusError]
-```
-
-### Why this matters
-
-- The database now arbitrates job ownership atomically.
-- The in-process `queued` map remains useful for reducing duplicate enqueueing inside one worker process, but it is no longer the main correctness boundary.
-- Idempotency remains necessary because external side effects and database completion are still not one atomic transaction.
+- Add authentication and authorization middleware.
+- Add Prometheus/OpenTelemetry metrics and traces.
+- Add real job executors and idempotency keys.
+- Add a separate dead-letter table and replay tooling.
+- Add least-privilege database roles.
+- Make worker count, queue size, retry policy, and poll interval configurable.
+- Add retry jitter and maximum retry delay.
+- Add production-ready rate limiting.
+- Add deployment examples for managed PostgreSQL and container platforms.
